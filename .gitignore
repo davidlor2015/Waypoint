@@ -1,0 +1,12 @@
+.env
+__pycache__/
+.venv/
+.pytest_cache/
+*.pyc
+app/core/__pycache__/
+app/db/__pycache__/
+app/models/__pycache__/
+app/schemas/__pycache__/
+app/api/__pycache__/
+app/api/routes/__pycache__/
+tests/__pycache__/

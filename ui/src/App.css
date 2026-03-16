@@ -1,0 +1,14 @@
+.app-layout {
+  padding: 2rem;
+  font-family: sans-serif;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.app-loading {
+  padding: 2rem;
+}

@@ -1,0 +1,24 @@
+------------------------------------------------------------------------------------------------------------
+# 3/14/2026
+AI Itinerary Feature — built today
+    curl http://127.0.0.1:11434/api/tags
+    cat /etc/resolv.conf | grep nameserver
+    ip route show | grep default
+    curl http://$(ip route show | grep default | awk '{print $3}'):11434/api/tags
+  New files
+  - ui/src/shared/api/ai.ts — typed API client (planItinerary, applyItinerary)
+  - ui/src/features/trips/ItineraryPanel.tsx — itinerary preview panel with day/item/cost display and apply
+  button
+
+  Modified files
+  - ui/src/features/TripList.tsx — added generate/apply flow, per-trip loading states, "Itinerary saved"
+  badge
+  - app/schemas/ai.py — added Pydantic validators to handle LLM type mismatches (int costs, string tips,
+  misplaced fields in days array), fixed date field name collision
+  - app/services/ai/itinerary_service.py — tightened prompts to prevent timeouts, added num_predict: 2048 to
+   avoid truncation, improved error logging
+  - app/services/llm/ollama_client.py — added num_predict: 2048 to Ollama request options
+  - app/core/config.py — fixed class ConfigDict → model_config = SettingsConfigDict(...) so .env is actually
+   loaded
+  - .env — updated OLLAMA_BASE_URL to Windows host IP so WSL can reach Ollama
+------------------------------------------------------------------------------------------------------------

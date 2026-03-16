@@ -1,0 +1,55 @@
+.trip-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trip-list-items {
+  list-style: none;
+  padding: 0;
+}
+
+.trip-card {
+  border: 1px solid #ccc;
+  margin: 10px 0;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.trip-title {
+  margin: 0 0 6px;
+}
+
+.trip-saved-badge {
+  font-size: 12px;
+  margin-left: 8px;
+  color: #2e86de;
+}
+
+.trip-generate-btn {
+  background-color: #00b894;
+  color: white;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.trip-generate-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.trip-delete-btn {
+  background-color: #ff4444;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.trip-error {
+  color: red;
+}
