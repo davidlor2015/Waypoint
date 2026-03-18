@@ -1,4 +1,4 @@
-// src/features/auth/LoginPage/LoginPage.css
+/* src/features/auth/LoginPage/LoginPage.css */
 :root {
   --login-bg-1: #f2efe9;
   --login-bg-2: #dbe7f3;
@@ -142,7 +142,7 @@
 }
 
 .login-toggle {
-  test-align: center;
+  text-align: center;
   margin-top: 12px;
   font-size: 0.875rem;
   color: #666;
