@@ -62,7 +62,7 @@ function App() {
         {showCreateForm ? (
           <CreateTripForm
             token={token!}
-            onSuccess={(_newTrip) => {
+            onSuccess={() => {
               setShowCreateForm(false);
             }}
             onCancel={() => setShowCreateForm(false)}
