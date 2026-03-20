@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.trip import Trip
 from app.schemas.ai import ItineraryResponse
 from app.services.llm.ollama_client import OllamaClient
+from app.services.ai.rule_based_service import generate_rule_based_itinerary
 from app.repositories.trip_repository import TripRepository
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,20 @@ Limit to 3 days max, 3 activities per day. Return JSON only."""
             logger.error(f"Parse error detail: {e}")
             raise ValueError("AI generated invalid data. Please try again.")
 
-    def apply_itinerary_to_db(self, trip_id: int, user_id: int, 
+    async def generate_itinerary_rule_based(
+        self,
+        trip_id: int,
+        user_id: int,
+        interests_override: str = None,
+        budget_override: str = None,
+    ) -> ItineraryResponse:
+        """Generates an itinerary using real POI data (OpenTripMap) — no LLM required."""
+        trip = self.trip_repo.get_by_id_and_user(trip_id, user_id)
+        if not trip:
+            raise ValueError("Trip not found or access denied.")
+        return await generate_rule_based_itinerary(trip, interests_override, budget_override)
+
+    def apply_itinerary_to_db(self, trip_id: int, user_id: int,
                               itinerary: ItineraryResponse) -> Trip:
         """
         Updates the database with the approved itinerary.

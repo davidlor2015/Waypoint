@@ -29,6 +29,28 @@ async def generate_trip_plan(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/plan-smart", response_model=ItineraryResponse)
+async def generate_trip_plan_smart(
+    request: AIPlanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Generates a draft itinerary using real POI data from OpenTripMap.
+    No LLM required. Does NOT save to DB — call /apply to save.
+    """
+    service = ItineraryService(db)
+    try:
+        return await service.generate_itinerary_rule_based(
+            trip_id=request.trip_id,
+            user_id=current_user.id,
+            interests_override=request.interests_override,
+            budget_override=request.budget_override,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/apply", status_code=200)
 async def apply_trip_plan(
     request: AIApplyRequest,

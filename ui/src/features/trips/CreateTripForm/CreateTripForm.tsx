@@ -1,16 +1,6 @@
 import { useState } from "react";
-import { createTrip } from "../../../shared/api/trips";
+import { createTrip, type Trip } from "../../../shared/api/trips";
 import "./CreateTripForm.css";
-
-interface Trip {
-  id: number;
-  title: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  description: string | null;
-  notes: string | null;
-}
 
 interface CreateTripFormProps {
   token: string;

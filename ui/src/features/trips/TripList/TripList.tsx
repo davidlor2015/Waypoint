@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { getTrips, deleteTrip } from "../../../shared/api/trips";
 import {
   planItinerary,
+  planItinerarySmart,
   applyItinerary,
   type Itinerary,
 } from "../../../shared/api/ai";
@@ -61,6 +62,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     Record<number, Itinerary>
   >({});
   const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
+  const [generatingSmartIds, setGeneratingSmartIds] = useState<Set<number>>(new Set());
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -108,6 +110,26 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
       );
     } finally {
       setGeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tripId);
+        return next;
+      });
+    }
+  };
+
+  const handleGenerateSmart = async (tripId: number) => {
+    setActionError(null);
+    setGeneratingSmartIds((prev) => new Set(prev).add(tripId));
+
+    try {
+      const itinerary = await planItinerarySmart(token, tripId);
+      setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Failed to generate itinerary.",
+      );
+    } finally {
+      setGeneratingSmartIds((prev) => {
         const next = new Set(prev);
         next.delete(tripId);
         return next;
@@ -209,6 +231,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
         <ul className="trip-list-items stack-md">
           {trips.map((trip) => {
             const isGenerating = generatingIds.has(trip.id);
+            const isGeneratingSmart = generatingSmartIds.has(trip.id);
             const isApplying = applyingIds.has(trip.id);
             const pendingItinerary = pendingItineraries[trip.id];
             const hasSavedItinerary = !!trip.description;
@@ -249,14 +272,18 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   <div className="actions-row">
                     <button
                       onClick={() => handleGenerate(trip.id)}
-                      disabled={isGenerating}
+                      disabled={isGenerating || isGeneratingSmart}
                       className="btn btn-primary"
                     >
-                      {isGenerating
-                        ? "Generating..."
-                        : hasSavedItinerary
-                          ? "Regenerate Itinerary"
-                          : "Generate Itinerary"}
+                      {isGenerating ? "Generating..." : "AI Plan"}
+                    </button>
+
+                    <button
+                      onClick={() => handleGenerateSmart(trip.id)}
+                      disabled={isGenerating || isGeneratingSmart}
+                      className="btn btn-secondary"
+                    >
+                      {isGeneratingSmart ? "Generating..." : "Smart Plan"}
                     </button>
 
                     <button

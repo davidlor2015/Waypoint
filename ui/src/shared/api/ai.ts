@@ -46,6 +46,28 @@ export const planItinerary = async (
     return response.json();
 };
 
+export const planItinerarySmart = async (
+    token: string,
+    tripId: number,
+    options?: { interests_override?: string; budget_override?: string }
+): Promise<Itinerary> => {
+    const response = await fetch(`${API_URL}/ai/plan-smart`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ trip_id: tripId, ...options }),
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to generate itinerary (${response.status}): ${text}`);
+    }
+
+    return response.json();
+};
+
 export const applyItinerary = async (
     token: string,
     tripId: number,

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_TIMEOUT_SECONDS: int = 60
 
+    OPENTRIPMAP_API_KEY: str = "5ae2e3f221c38a28845f05b6cf278d9b31c8db8c4432be2b5e5c6b12"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

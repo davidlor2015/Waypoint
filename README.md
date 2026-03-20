@@ -1,6 +1,6 @@
 # Travel Planner
 
-A full-stack web application for planning trips with AI-generated itineraries. Users can register, log in, manage trips, and generate day-by-day travel plans using a locally-hosted large language model.
+A full-stack web application for planning trips with AI-generated itineraries. Users can register, log in, manage trips, and generate day-by-day travel plans using either a locally-hosted large language model or a rule-based engine powered by real-world POI data.
 
 ---
 
@@ -29,7 +29,7 @@ Travel Planner lets users:
 
 - Register and log in with secure JWT-based authentication
 - Create, view, update, and delete trips with destination and date information
-- Generate AI-powered day-by-day itineraries using a local LLM (Ollama)
+- Generate day-by-day itineraries via a local LLM (Ollama) or a rule-based engine using live POI data
 - Apply generated itineraries back to saved trips
 
 ---
@@ -62,10 +62,12 @@ Travel Planner lets users:
 
 ### Infrastructure
 
-| Technology           | Purpose                            |
-| -------------------- | ---------------------------------- |
-| MySQL 8.0            | Primary relational database        |
-| Ollama + llama3.2:3b | Local LLM for itinerary generation |
+| Technology           | Purpose                                     |
+| -------------------- | ------------------------------------------- |
+| MySQL 8.0            | Primary relational database                 |
+| Ollama + llama3.2:3b | Local LLM for AI itinerary generation       |
+| OpenTripMap API      | Real-world POI data for rule-based planning |
+| Nominatim (OSM)      | Free geocoding (city name → lat/lon)        |
 
 ---
 
@@ -137,7 +139,8 @@ travel-planner/
 │       ├── auth_service.py           # Registration and login business logic
 │       ├── trip_service.py           # Trip CRUD business logic
 │       ├── ai/
-│       │   └── itinerary_service.py  # Orchestrates LLM itinerary generation
+│       │   ├── itinerary_service.py  # Orchestrates LLM itinerary generation
+│       │   └── rule_based_service.py # Rule-based generation via OpenTripMap POI data
 │       └── llm/
 │           └── ollama_client.py      # Low-level Ollama HTTP client
 ├── alembic/                          # Database migration scripts
@@ -266,11 +269,11 @@ Component-level state (form inputs, loading flags, errors) stays local to the co
 
 ## AI Integration
 
-### How It Works
+The app supports two independent itinerary generation strategies, both returning the same `ItineraryResponse` shape. The save flow (`/ai/apply`) works identically for both.
 
-The AI itinerary feature uses a local Ollama instance running `llama3.2:3b`. No external API keys are required.
+### Strategy 1 — LLM (Ollama)
 
-The `ItineraryService` follows a pipeline:
+Uses a local Ollama instance running `llama3.2:3b`. No external API keys required.
 
 ```
 1. Fetch trip from DB         → verify ownership, get destination/dates
@@ -283,16 +286,35 @@ The `ItineraryService` follows a pipeline:
 8. Return structured object   → guaranteed shape, safe to use
 ```
 
-### Prompt Engineering
+The system prompt injects the full Pydantic JSON schema of `ItineraryResponse` directly into the LLM context, reducing hallucinated or malformed responses.
 
-The system prompt injects the full Pydantic JSON schema of `ItineraryResponse` directly into the LLM context. This tells the model exactly what structure to output, reducing hallucinated or malformed responses.
+### Strategy 2 — Rule-Based (OpenTripMap)
 
-### Two-Step Flow
+Generates itineraries from real POI data without an LLM. Entirely free — no credit card required.
 
-Generation and saving are intentionally separate endpoints:
+```
+1. Fetch trip from DB         → verify ownership, get destination/dates
+2. Geocode destination        → Nominatim (OpenStreetMap) converts city name → lat/lon
+3. Map user interests         → translate keywords to OpenTripMap category kinds
+4. Fetch POIs                 → OpenTripMap returns rated attractions within 5km
+5. Score & rank               → sort by POI rating, deduplicate by name
+6. Assemble days              → slot top N POIs across trip days (max 3 days, 3 per day)
+7. Return ItineraryResponse   → identical shape to LLM output
+```
 
-- `POST /ai/plan` — generates an itinerary but does not save it (lets the user review first)
-- `POST /ai/apply` — saves an approved itinerary to the trip record
+**Interest keywords** (comma-separated): `food`, `history`, `nature`, `art`, `shopping`, `religion`, `beach`, `sport`, `nightlife`
+
+**Budget values**: `budget`, `moderate`, `luxury`
+
+If no POIs match the requested interest categories (e.g. `beach` in a landlocked city), the service automatically retries with the broadest category (`interesting_places`).
+
+### Two-Step Save Flow
+
+Generation and saving are intentionally separate. Both strategies use the same save endpoint:
+
+- `POST /v1/ai/plan` — LLM generation, preview only
+- `POST /v1/ai/plan-smart` — Rule-based generation, preview only
+- `POST /v1/ai/apply` — Save any approved itinerary to the trip record
 
 ---
 
@@ -468,6 +490,7 @@ pytest tests/
 | `OLLAMA_BASE_URL`             | Yes      | Ollama server URL                 |
 | `OLLAMA_MODEL`                | Yes      | Model name (e.g. `llama3.2:3b`)   |
 | `OLLAMA_TIMEOUT_SECONDS`      | Yes      | Request timeout for LLM calls     |
+| `OPENTRIPMAP_API_KEY`         | No       | Free key from opentripmap.com — required for `/v1/ai/plan-smart` |
 
 Frontend:
 
@@ -501,7 +524,18 @@ Full interactive documentation is available at `http://localhost:8000/docs` when
 
 ### AI
 
-| Method | Endpoint       | Description                          |
-| ------ | -------------- | ------------------------------------ |
-| POST   | `/v1/ai/plan`  | Generate an itinerary (preview only) |
-| POST   | `/v1/ai/apply` | Save a generated itinerary to a trip |
+| Method | Endpoint             | Description                                          |
+| ------ | -------------------- | ---------------------------------------------------- |
+| POST   | `/v1/ai/plan`        | Generate an itinerary via LLM (preview only)         |
+| POST   | `/v1/ai/plan-smart`  | Generate an itinerary via rule-based engine (preview only) |
+| POST   | `/v1/ai/apply`       | Save any generated itinerary to a trip               |
+
+Both plan endpoints accept the same request body:
+
+```json
+{
+  "trip_id": 1,
+  "interests_override": "history,food",
+  "budget_override": "moderate"
+}
+```
