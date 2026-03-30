@@ -68,7 +68,7 @@ export function Dashboard({ trips }: Props) {
             totals[key] = (totals[key] ?? 0) + parseBudgetValue(String(val));
           }
         }
-      } catch (_) {
+      } catch {
         // skip trips with invalid itinerary JSON
       }
     }
