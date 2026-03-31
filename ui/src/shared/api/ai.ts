@@ -29,7 +29,7 @@ export const planItinerary = async (
     tripId: number,
     options?: { interests_override?: string; budget_override?: string }
 ): Promise<Itinerary> => {
-    const response = await fetch(`${API_URL}/ai/plan`, {
+    const response = await fetch(`${API_URL}/v1/ai/plan`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -51,7 +51,7 @@ export const planItinerarySmart = async (
     tripId: number,
     options?: { interests_override?: string; budget_override?: string }
 ): Promise<Itinerary> => {
-    const response = await fetch(`${API_URL}/ai/plan-smart`, {
+    const response = await fetch(`${API_URL}/v1/ai/plan-smart`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ export const applyItinerary = async (
     tripId: number,
     itinerary: Itinerary
 ): Promise<void> => {
-    const response = await fetch(`${API_URL}/ai/apply`, {
+    const response = await fetch(`${API_URL}/v1/ai/apply`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

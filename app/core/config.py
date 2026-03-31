@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Travel Planner API"
-    DATABASE_URL: str ="mysql+pymysql://planner_user:secret@localhost:3306/travel_planner"
+    DATABASE_URL: str = "postgresql+psycopg2://user:password@localhost:5432/travel_planner"
 
     JWT_SECRET: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
     JWT_ALG: str = "HS256"

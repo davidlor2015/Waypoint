@@ -43,6 +43,13 @@
   margin-top: 2px;
 }
 
+.itinerary-item-notes {
+  font-size: 0.82rem;
+  color: #777;
+  margin-top: 3px;
+  font-style: italic;
+}
+
 .itinerary-item-cost {
   font-weight: 600;
   margin-left: 16px;

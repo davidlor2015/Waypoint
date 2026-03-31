@@ -37,7 +37,10 @@ class ItineraryResponse(BaseModel):
     def filter_invalid_days(cls, v: Any) -> List[Any]:
         if not isinstance(v, list):
             return v
-        return [item for item in v if isinstance(item, dict) and "day_number" in item]
+        return [
+            item for item in v
+            if not isinstance(item, dict) or "day_number" in item
+        ]
     budget_breakdown: Optional[dict[str, str]] = Field(None, description="Key-value pairs of budget categories")
     packing_list: Optional[List[str]] = None
     tips: Optional[List[str]] = None

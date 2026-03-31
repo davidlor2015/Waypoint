@@ -3,8 +3,8 @@ import "./ItineraryPanel.css";
 
 interface ItineraryPanelProps {
   itinerary: Itinerary;
-  onApply: () => void;
-  applying: boolean;
+  onApply?: () => void;
+  applying?: boolean;
 }
 
 export const ItineraryPanel = ({
@@ -33,6 +33,9 @@ export const ItineraryPanel = ({
                 {item.location && (
                   <div className="itinerary-item-location">{item.location}</div>
                 )}
+                {item.notes && (
+                  <div className="itinerary-item-notes">{item.notes}</div>
+                )}
               </div>
 
               {/* Right Side: Cost */}
@@ -44,13 +47,15 @@ export const ItineraryPanel = ({
         </div>
       ))}
 
-      <button
-        onClick={onApply}
-        disabled={applying}
-        className="itinerary-apply-btn"
-      >
-        {applying ? "Saving..." : "Apply Itinerary to Trip"}
-      </button>
+      {onApply && (
+        <button
+          onClick={onApply}
+          disabled={applying}
+          className="itinerary-apply-btn"
+        >
+          {applying ? "Saving..." : "Apply Itinerary to Trip"}
+        </button>
+      )}
     </div>
   );
 };

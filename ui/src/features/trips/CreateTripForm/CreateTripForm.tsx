@@ -17,8 +17,7 @@ export const CreateTripForm = ({
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [description, setDescription] = useState("");
-  const [notes, setNotes] = useState("");
+  const [interests, setInterests] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,9 +37,7 @@ export const CreateTripForm = ({
         destination,
         start_date: startDate,
         end_date: endDate,
-        // Pass undefined if empty so they match the optional API fields correctly
-        description: description || undefined,
-        notes: notes || undefined,
+        notes: interests,
       });
 
       // 3. Call onSuccess with the returned trip
@@ -86,15 +83,11 @@ export const CreateTripForm = ({
         onChange={(e) => setEndDate(e.target.value)}
         required
       />
-      <textarea
-        placeholder="Description (optional)"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-      />
-      <textarea
-        placeholder="Notes (optional)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+      <input
+        placeholder="Interests (e.g. food, history, nature)"
+        value={interests}
+        onChange={(e) => setInterests(e.target.value)}
+        required
       />
 
       {error && <div className="create-trip-error">{error}</div>}

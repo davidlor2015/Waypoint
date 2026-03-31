@@ -64,6 +64,32 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
   const [generatingSmartIds, setGeneratingSmartIds] = useState<Set<number>>(new Set());
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
+  const [viewingIds, setViewingIds] = useState<Set<number>>(new Set());
+
+  const parseItinerary = (description: string): Itinerary | null => {
+    try {
+      return JSON.parse(description);
+    } catch {
+      const marker = "DETAILS (JSON): ";
+      const idx = description.indexOf(marker);
+      if (idx !== -1) {
+        try {
+          return JSON.parse(description.slice(idx + marker.length));
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+  };
+
+  const toggleView = (tripId: number) => {
+    setViewingIds((prev) => {
+      const next = new Set(prev);
+      next.has(tripId) ? next.delete(tripId) : next.add(tripId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -102,7 +128,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     setGeneratingIds((prev) => new Set(prev).add(tripId));
 
     try {
-      const itinerary = await planItinerary(token, tripId);
+      const trip = trips.find((t) => t.id === tripId);
+      const itinerary = await planItinerary(token, tripId, {
+        interests_override: trip?.notes ?? undefined,
+      });
       setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
     } catch (err) {
       setActionError(
@@ -122,7 +151,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     setGeneratingSmartIds((prev) => new Set(prev).add(tripId));
 
     try {
-      const itinerary = await planItinerarySmart(token, tripId);
+      const trip = trips.find((t) => t.id === tripId);
+      const itinerary = await planItinerarySmart(token, tripId, {
+        interests_override: trip?.notes ?? undefined,
+      });
       setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
     } catch (err) {
       setActionError(
@@ -146,13 +178,8 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
 
     try {
       await applyItinerary(token, tripId, itinerary);
-      setTrips((prev) =>
-        prev.map((t) =>
-          t.id === tripId
-            ? { ...t, description: JSON.stringify(itinerary) }
-            : t,
-        ),
-      );
+      const freshTrips = await getTrips(token);
+      setTrips(freshTrips);
       setPendingItineraries((prev) => {
         const next = { ...prev };
         delete next[tripId];
@@ -233,8 +260,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
             const isGenerating = generatingIds.has(trip.id);
             const isGeneratingSmart = generatingSmartIds.has(trip.id);
             const isApplying = applyingIds.has(trip.id);
+            const isViewing = viewingIds.has(trip.id);
             const pendingItinerary = pendingItineraries[trip.id];
             const hasSavedItinerary = !!trip.description;
+            const savedItinerary = hasSavedItinerary ? parseItinerary(trip.description!) : null;
 
             return (
               <li
@@ -269,30 +298,44 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                     applying={isApplying}
                   />
                 ) : (
-                  <div className="actions-row">
-                    <button
-                      onClick={() => handleGenerate(trip.id)}
-                      disabled={isGenerating || isGeneratingSmart}
-                      className="btn btn-primary"
-                    >
-                      {isGenerating ? "Generating..." : "AI Plan"}
-                    </button>
+                  <>
+                    {isViewing && savedItinerary && (
+                      <ItineraryPanel itinerary={savedItinerary} />
+                    )}
+                    <div className="actions-row">
+                      <button
+                        onClick={() => handleGenerate(trip.id)}
+                        disabled={isGenerating || isGeneratingSmart}
+                        className="btn btn-primary"
+                      >
+                        {isGenerating ? "Generating..." : "AI Plan"}
+                      </button>
 
-                    <button
-                      onClick={() => handleGenerateSmart(trip.id)}
-                      disabled={isGenerating || isGeneratingSmart}
-                      className="btn btn-secondary"
-                    >
-                      {isGeneratingSmart ? "Generating..." : "Smart Plan"}
-                    </button>
+                      <button
+                        onClick={() => handleGenerateSmart(trip.id)}
+                        disabled={isGenerating || isGeneratingSmart}
+                        className="btn btn-secondary"
+                      >
+                        {isGeneratingSmart ? "Generating..." : "Smart Plan"}
+                      </button>
 
-                    <button
-                      onClick={() => handleDelete(trip.id)}
-                      className="btn btn-danger"
-                    >
-                      Delete Trip
-                    </button>
-                  </div>
+                      {savedItinerary && (
+                        <button
+                          onClick={() => toggleView(trip.id)}
+                          className="btn btn-secondary"
+                        >
+                          {isViewing ? "Hide Itinerary" : "View Itinerary"}
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDelete(trip.id)}
+                        className="btn btn-danger"
+                      >
+                        Delete Trip
+                      </button>
+                    </div>
+                  </>
                 )}
               </li>
             );

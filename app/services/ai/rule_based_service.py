@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -30,7 +31,7 @@ DEFAULT_KINDS = "interesting_places"
 DAY_TIMES = ["09:00 AM", "12:00 PM", "03:00 PM", "06:00 PM"]
 
 # How many activities to request from the API (fetch more, then rank down to what we need)
-FETCH_LIMIT = 30
+FETCH_LIMIT = 50
 
 
 async def _geocode(destination: str) -> tuple[float, float]:
@@ -67,7 +68,39 @@ async def _fetch_pois(lat: float, lon: float, kinds: str) -> list[dict]:
             },
         )
         response.raise_for_status()
-        return response.json().get("features", [])
+        data = response.json()
+        pois = data if isinstance(data, list) else data.get("features", [])
+        logger.info(f"OpenTripMap returned {len(pois)} POIs for kinds={kinds}")
+        for poi in pois[:5]:
+            props = poi.get("properties") or poi
+            logger.info(f"  POI sample: name={props.get('name')!r} rate={props.get('rate')} kinds={props.get('kinds')!r}")
+        return pois
+
+
+async def _fetch_poi_description(xid: str) -> str:
+    """Fetch a brief description for a POI from its OpenTripMap detail page."""
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.get(
+                f"{OPENTRIPMAP_BASE}/xid/{xid}",
+                params={"apikey": settings.OPENTRIPMAP_API_KEY},
+            )
+            response.raise_for_status()
+            data = response.json()
+            extract = (data.get("wikipedia_extracts") or {}).get("text") or ""
+            if extract:
+                # Trim to a readable length
+                return extract[:300].rsplit(" ", 1)[0] + "…" if len(extract) > 300 else extract
+            return (data.get("info") or {}).get("descr") or ""
+    except Exception:
+        return ""
+
+
+async def _enrich_with_descriptions(pois: list[dict]) -> dict[str, str]:
+    """Fetch descriptions for a list of POIs in parallel. Returns {xid: description}."""
+    xids = [_props(p).get("xid") for p in pois]
+    results = await asyncio.gather(*[_fetch_poi_description(xid) for xid in xids if xid])
+    return {xid: desc for xid, desc in zip((x for x in xids if x), results)}
 
 
 def _resolve_kinds(interests: list[str]) -> str:
@@ -76,9 +109,14 @@ def _resolve_kinds(interests: list[str]) -> str:
     return ",".join(kinds) if kinds else DEFAULT_KINDS
 
 
+def _props(poi: dict) -> dict:
+    """Normalise GeoJSON ({properties: {...}}) and flat-list responses to a single dict."""
+    return poi.get("properties") or poi
+
+
 def _score_poi(poi: dict) -> int:
     """Score a POI by its OpenTripMap rating (0–3 scale → 0–30)."""
-    return poi.get("properties", {}).get("rate", 0) * 10
+    return _props(poi).get("rate", 0) * 10
 
 
 def _cost_label(budget: str) -> str:
@@ -89,28 +127,33 @@ def _cost_label(budget: str) -> str:
     return "$10–$30"
 
 
-def _assemble_itinerary(
-    trip: Trip,
-    pois: list[dict],
-    interests: list[str],
-    budget: str,
-) -> ItineraryResponse:
-    start = trip.start_date
-    end = trip.end_date
-    num_days = min((end - start).days + 1, 3)
-    acts_per_day = min(len(DAY_TIMES), 3)
-
-    # Rank by score, deduplicate by name
+def _rank_pois(pois: list[dict], limit: int) -> list[dict]:
+    """Sort POIs by score, deduplicate by name, return top `limit`."""
     seen_names: set[str] = set()
     ranked: list[dict] = []
     for poi in sorted(pois, key=_score_poi, reverse=True):
-        name: str = poi.get("properties", {}).get("name") or ""
+        name: str = _props(poi).get("name") or ""
         if name and name not in seen_names:
             seen_names.add(name)
             ranked.append(poi)
-        if len(ranked) >= num_days * acts_per_day:
+        if len(ranked) >= limit:
             break
+    return ranked
 
+
+def _assemble_itinerary(
+    trip: Trip,
+    ranked: list[dict],
+    interests: list[str],
+    budget: str,
+    descriptions: dict[str, str] | None = None,
+) -> ItineraryResponse:
+    start = trip.start_date
+    end = trip.end_date
+    num_days = min((end - start).days + 1, 7)
+    acts_per_day = min(len(DAY_TIMES), 3)
+
+    logger.info(f"Assembling itinerary: {len(ranked)} ranked POIs for {num_days} days x {acts_per_day} acts")
     cost = _cost_label(budget)
     days: list[DayPlan] = []
 
@@ -119,15 +162,17 @@ def _assemble_itinerary(
         items: list[ItineraryItem] = []
 
         for i, poi in enumerate(slice_):
-            props = poi.get("properties", {})
+            props = _props(poi)
             raw_kinds: str = props.get("kinds", "")
             category = raw_kinds.split(",")[0].replace("_", " ").title() if raw_kinds else "Attraction"
+            xid = props.get("xid")
+            description = (descriptions or {}).get(xid) if xid else ""
 
             items.append(ItineraryItem(
                 time=DAY_TIMES[i],
                 title=props.get("name") or "Local Attraction",
                 location=trip.destination,
-                notes=f"Type: {category}",
+                notes=description or f"Type: {category}",
                 cost_estimate=cost,
             ))
 
@@ -139,10 +184,11 @@ def _assemble_itinerary(
 
     interest_label = ", ".join(interests) if interests else "general sightseeing"
 
+    dest = trip.destination.title()
     return ItineraryResponse(
-        title=f"{num_days}-Day {trip.destination} Trip",
+        title=f"{num_days}-Day {dest} Trip",
         summary=(
-            f"A {budget} {num_days}-day itinerary in {trip.destination} "
+            f"A {budget} {num_days}-day itinerary in {dest} "
             f"focused on {interest_label}. Activities sourced from OpenStreetMap."
         ),
         days=days,
@@ -179,4 +225,11 @@ async def generate_rule_based_itinerary(
             "Try a larger or better-known city."
         )
 
-    return _assemble_itinerary(trip, pois, interests, budget)
+    num_days = min((trip.end_date - trip.start_date).days + 1, 7)
+    acts_per_day = min(len(DAY_TIMES), 3)
+    ranked = _rank_pois(pois, limit=num_days * acts_per_day)
+    logger.info(f"Ranked {len(ranked)} unique named POIs")
+
+    descriptions = await _enrich_with_descriptions(ranked)
+
+    return _assemble_itinerary(trip, ranked, interests, budget, descriptions)
