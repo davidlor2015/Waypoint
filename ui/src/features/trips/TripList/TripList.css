@@ -73,6 +73,47 @@
   color: var(--color-text);
 }
 
+/* ── Generating indicator ── */
+.generating-indicator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-3, 0.75rem);
+  background: var(--color-surface-raised, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 6px);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.generating-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-primary, #3b82f6);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.generating-label {
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text-muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+
+.generating-slow-hint {
+  width: 100%;
+  margin: 0;
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-text-muted, #6b7280);
+  font-style: italic;
+}
+
 @media (max-width: 768px) {
   .trip-list-shell {
     padding-block: var(--space-4);

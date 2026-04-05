@@ -5,6 +5,8 @@ export interface ItineraryItem {
     time: string | null;
     title: string;
     location: string | null;
+    lat: number | null;
+    lon: number | null;
     notes: string | null;
     cost_estimate: string | null;
 }
@@ -24,10 +26,26 @@ export interface Itinerary {
     tips: string[] | null;
 }
 
+/**
+ * How long (ms) to wait for an AI generation response before aborting.
+ *
+ * Ollama on a CPU can take 60–120 s; we allow 3 minutes to be safe.
+ * This constant is used by TripList to create an AbortController and
+ * is exported so the UI can show a "taking too long" hint before the
+ * hard cutoff.
+ *
+ * When the backend adds an SSE endpoint, replace the fetch calls below
+ * with `new EventSource(...)` and remove the AbortController timeout —
+ * streaming responses solve the timeout problem at the protocol level.
+ */
+export const AI_REQUEST_TIMEOUT_MS = 180_000; // 3 minutes
+export const AI_SLOW_THRESHOLD_MS = 30_000;   // show hint after 30 s
+
 export const planItinerary = async (
     token: string,
     tripId: number,
-    options?: { interests_override?: string; budget_override?: string }
+    options?: { interests_override?: string; budget_override?: string },
+    signal?: AbortSignal,
 ): Promise<Itinerary> => {
     const response = await fetch(`${API_URL}/v1/ai/plan`, {
         method: 'POST',
@@ -36,6 +54,7 @@ export const planItinerary = async (
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ trip_id: tripId, ...options }),
+        signal,
     });
 
     if (!response.ok) {
@@ -49,7 +68,8 @@ export const planItinerary = async (
 export const planItinerarySmart = async (
     token: string,
     tripId: number,
-    options?: { interests_override?: string; budget_override?: string }
+    options?: { interests_override?: string; budget_override?: string },
+    signal?: AbortSignal,
 ): Promise<Itinerary> => {
     const response = await fetch(`${API_URL}/v1/ai/plan-smart`, {
         method: 'POST',
@@ -58,6 +78,7 @@ export const planItinerarySmart = async (
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ trip_id: tripId, ...options }),
+        signal,
     });
 
     if (!response.ok) {
@@ -71,7 +92,7 @@ export const planItinerarySmart = async (
 export const applyItinerary = async (
     token: string,
     tripId: number,
-    itinerary: Itinerary
+    itinerary: Itinerary,
 ): Promise<void> => {
     const response = await fetch(`${API_URL}/v1/ai/apply`, {
         method: 'POST',

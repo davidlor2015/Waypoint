@@ -14,10 +14,12 @@ This keeps API tests realistic but isolated.
 
 import os
 
-# ---- Ensure JWT settings exist for tests ----
+# ---- Ensure settings exist before any app modules are imported ----
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
 os.environ.setdefault("JWT_ALG", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+# Low limit so the rate-limit test only needs a few requests to trigger a 429.
+os.environ.setdefault("AI_RATE_LIMIT", "3/minute")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,6 +61,20 @@ def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_rate_limiter():
+    """
+    Reset the slowapi in-memory counter before and after every test.
+
+    Without this, rate limit hits from one test would bleed into the next,
+    causing sporadic 429 failures on perfectly normal requests.
+    """
+    from app.core.limiter import limiter
+    limiter._storage.reset()
+    yield
+    limiter._storage.reset()
 
 
 @pytest.fixture(scope="function")

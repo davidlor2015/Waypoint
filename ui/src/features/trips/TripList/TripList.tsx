@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getTrips, deleteTrip } from "../../../shared/api/trips";
 import {
   planItinerary,
   planItinerarySmart,
   applyItinerary,
+  AI_REQUEST_TIMEOUT_MS,
+  AI_SLOW_THRESHOLD_MS,
   type Itinerary,
 } from "../../../shared/api/ai";
 import { ItineraryPanel } from "../ItineraryPanel";
@@ -24,33 +26,61 @@ interface TripListProps {
   onCreateClick: () => void;
 }
 
-const LoadingSkeleton = () => {
-  return (
-    <div className="trip-list-shell container stack-lg">
-      <header className="trip-list-header row-between">
-        <div className="skeleton skeleton-title" />
-        <div className="skeleton skeleton-pill" />
-      </header>
+// ------------------------------------------------------------------
+// Loading skeleton (shown while the trip list is first fetched)
+// ------------------------------------------------------------------
 
-      <ul className="trip-list-items stack-md" aria-hidden="true">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <li
-            key={index}
-            className="trip-card ui-card ui-card--padded stack-md"
-          >
-            <div className="skeleton skeleton-title" />
-            <div className="skeleton skeleton-line" />
-            <div className="skeleton skeleton-line" />
-            <div className="actions-row">
-              <div className="skeleton skeleton-pill" />
-              <div className="skeleton skeleton-pill" />
-            </div>
-          </li>
-        ))}
-      </ul>
+const LoadingSkeleton = () => (
+  <div className="trip-list-shell container stack-lg">
+    <header className="trip-list-header row-between">
+      <div className="skeleton skeleton-title" />
+      <div className="skeleton skeleton-pill" />
+    </header>
+    <ul className="trip-list-items stack-md" aria-hidden="true">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <li key={index} className="trip-card ui-card ui-card--padded stack-md">
+          <div className="skeleton skeleton-title" />
+          <div className="skeleton skeleton-line" />
+          <div className="skeleton skeleton-line" />
+          <div className="actions-row">
+            <div className="skeleton skeleton-pill" />
+            <div className="skeleton skeleton-pill" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+// ------------------------------------------------------------------
+// Generating indicator (shown inside a trip card during AI generation)
+// ------------------------------------------------------------------
+
+interface GeneratingIndicatorProps {
+  elapsedSeconds: number;
+}
+
+const GeneratingIndicator = ({ elapsedSeconds }: GeneratingIndicatorProps) => {
+  const isSlow = elapsedSeconds * 1000 >= AI_SLOW_THRESHOLD_MS;
+  return (
+    <div className="generating-indicator" aria-live="polite" aria-atomic="true">
+      <span className="generating-spinner" aria-hidden="true" />
+      <span className="generating-label">
+        Generating itinerary… {elapsedSeconds > 0 && `(${elapsedSeconds}s)`}
+      </span>
+      {isSlow && (
+        <p className="generating-slow-hint">
+          The AI is still working — LLM responses can take 1–2 minutes on CPU.
+          Please keep this tab open.
+        </p>
+      )}
     </div>
   );
 };
+
+// ------------------------------------------------------------------
+// Main component
+// ------------------------------------------------------------------
 
 export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -61,10 +91,53 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [pendingItineraries, setPendingItineraries] = useState<
     Record<number, Itinerary>
   >({});
+
+  // Sets tracking which trips are in a given async state
   const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
   const [generatingSmartIds, setGeneratingSmartIds] = useState<Set<number>>(new Set());
   const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
   const [viewingIds, setViewingIds] = useState<Set<number>>(new Set());
+
+  // Per-trip elapsed seconds counter (drives the generating indicator display)
+  const [generatingElapsed, setGeneratingElapsed] = useState<Record<number, number>>({});
+
+  // Mutable refs for timer IDs — using ref avoids stale-closure issues in callbacks
+  const timerRefs = useRef<Record<number, ReturnType<typeof setInterval>>>({});
+
+  // ------------------------------------------------------------------
+  // Timer helpers
+  // ------------------------------------------------------------------
+
+  const startTimer = (tripId: number) => {
+    setGeneratingElapsed((prev) => ({ ...prev, [tripId]: 0 }));
+    timerRefs.current[tripId] = setInterval(() => {
+      setGeneratingElapsed((prev) => ({
+        ...prev,
+        [tripId]: (prev[tripId] ?? 0) + 1,
+      }));
+    }, 1000);
+  };
+
+  const stopTimer = (tripId: number) => {
+    clearInterval(timerRefs.current[tripId]);
+    delete timerRefs.current[tripId];
+    setGeneratingElapsed((prev) => {
+      const next = { ...prev };
+      delete next[tripId];
+      return next;
+    });
+  };
+
+  // Cleanup all timers when the component unmounts
+  useEffect(() => {
+    return () => {
+      Object.values(timerRefs.current).forEach(clearInterval);
+    };
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Data helpers
+  // ------------------------------------------------------------------
 
   const parseItinerary = (description: string): Itinerary | null => {
     try {
@@ -86,10 +159,18 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const toggleView = (tripId: number) => {
     setViewingIds((prev) => {
       const next = new Set(prev);
-      next.has(tripId) ? next.delete(tripId) : next.add(tripId);
+      if (next.has(tripId)) {
+        next.delete(tripId);
+      } else {
+        next.add(tripId);
+      }
       return next;
     });
   };
+
+  // ------------------------------------------------------------------
+  // Initial fetch
+  // ------------------------------------------------------------------
 
   useEffect(() => {
     const fetchData = async () => {
@@ -110,35 +191,65 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     fetchData();
   }, [token]);
 
+  // ------------------------------------------------------------------
+  // Actions
+  // ------------------------------------------------------------------
+
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this trip?")) return;
-
     setActionError(null);
     try {
       await deleteTrip(token, id);
-      setTrips((prevTrips) => prevTrips.filter((trip) => trip.id !== id));
-    } catch (err) {
-      console.error("Failed to delete trip:", err);
+      setTrips((prev) => prev.filter((t) => t.id !== id));
+    } catch {
       setActionError("Failed to delete trip. Please try again.");
     }
   };
 
-  const handleGenerate = async (tripId: number) => {
+  /**
+   * Shared generator — used by both "AI Plan" and "Smart Plan" buttons.
+   *
+   * Attaches an AbortController (hard timeout = AI_REQUEST_TIMEOUT_MS) so
+   * the browser never hangs indefinitely waiting for a slow LLM response.
+   * The elapsed timer provides real-time feedback in the UI.
+   *
+   * SSE groundwork: when the backend exposes a streaming endpoint, replace
+   * the `generate` fetch call here with `new EventSource(url)` and push
+   * partial tokens into state as they arrive.
+   */
+  const runGeneration = async (
+    tripId: number,
+    generate: (signal: AbortSignal) => Promise<Itinerary>,
+    trackingSet: React.Dispatch<React.SetStateAction<Set<number>>>,
+  ) => {
     setActionError(null);
-    setGeneratingIds((prev) => new Set(prev).add(tripId));
+    trackingSet((prev) => new Set(prev).add(tripId));
+    startTimer(tripId);
+
+    const controller = new AbortController();
+    const hardTimeout = window.setTimeout(
+      () => controller.abort(),
+      AI_REQUEST_TIMEOUT_MS,
+    );
 
     try {
-      const trip = trips.find((t) => t.id === tripId);
-      const itinerary = await planItinerary(token, tripId, {
-        interests_override: trip?.notes ?? undefined,
-      });
+      const itinerary = await generate(controller.signal);
       setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to generate itinerary.",
-      );
+      if (err instanceof Error && err.name === "AbortError") {
+        setActionError(
+          "The AI is taking too long and the request was cancelled. " +
+          "Please try again — shorter trips generate faster.",
+        );
+      } else {
+        setActionError(
+          err instanceof Error ? err.message : "Failed to generate itinerary.",
+        );
+      }
     } finally {
-      setGeneratingIds((prev) => {
+      window.clearTimeout(hardTimeout);
+      stopTimer(tripId);
+      trackingSet((prev) => {
         const next = new Set(prev);
         next.delete(tripId);
         return next;
@@ -146,27 +257,24 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     }
   };
 
-  const handleGenerateSmart = async (tripId: number) => {
-    setActionError(null);
-    setGeneratingSmartIds((prev) => new Set(prev).add(tripId));
+  const handleGenerate = (tripId: number) => {
+    const trip = trips.find((t) => t.id === tripId);
+    return runGeneration(
+      tripId,
+      (signal) =>
+        planItinerary(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
+      setGeneratingIds,
+    );
+  };
 
-    try {
-      const trip = trips.find((t) => t.id === tripId);
-      const itinerary = await planItinerarySmart(token, tripId, {
-        interests_override: trip?.notes ?? undefined,
-      });
-      setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to generate itinerary.",
-      );
-    } finally {
-      setGeneratingSmartIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tripId);
-        return next;
-      });
-    }
+  const handleGenerateSmart = (tripId: number) => {
+    const trip = trips.find((t) => t.id === tripId);
+    return runGeneration(
+      tripId,
+      (signal) =>
+        planItinerarySmart(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
+      setGeneratingSmartIds,
+    );
   };
 
   const handleApply = async (tripId: number) => {
@@ -197,6 +305,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
       });
     }
   };
+
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
 
   if (loading) return <LoadingSkeleton />;
 
@@ -259,11 +371,15 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
           {trips.map((trip) => {
             const isGenerating = generatingIds.has(trip.id);
             const isGeneratingSmart = generatingSmartIds.has(trip.id);
+            const isAnyGenerating = isGenerating || isGeneratingSmart;
             const isApplying = applyingIds.has(trip.id);
             const isViewing = viewingIds.has(trip.id);
             const pendingItinerary = pendingItineraries[trip.id];
             const hasSavedItinerary = !!trip.description;
-            const savedItinerary = hasSavedItinerary ? parseItinerary(trip.description!) : null;
+            const savedItinerary = hasSavedItinerary
+              ? parseItinerary(trip.description!)
+              : null;
+            const elapsed = generatingElapsed[trip.id] ?? 0;
 
             return (
               <li
@@ -285,11 +401,16 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   <div className="trip-meta-row">
                     <dt>Dates</dt>
                     <dd>
-                      {new Date(trip.start_date).toLocaleDateString()} -{" "}
+                      {new Date(trip.start_date).toLocaleDateString()} –{" "}
                       {new Date(trip.end_date).toLocaleDateString()}
                     </dd>
                   </div>
                 </dl>
+
+                {/* Show generating indicator inside the card while working */}
+                {isAnyGenerating && (
+                  <GeneratingIndicator elapsedSeconds={elapsed} />
+                )}
 
                 {pendingItinerary ? (
                   <ItineraryPanel
@@ -305,18 +426,20 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                     <div className="actions-row">
                       <button
                         onClick={() => handleGenerate(trip.id)}
-                        disabled={isGenerating || isGeneratingSmart}
+                        disabled={isAnyGenerating}
                         className="btn btn-primary"
+                        aria-busy={isGenerating}
                       >
-                        {isGenerating ? "Generating..." : "AI Plan"}
+                        {isGenerating ? "Working…" : "AI Plan"}
                       </button>
 
                       <button
                         onClick={() => handleGenerateSmart(trip.id)}
-                        disabled={isGenerating || isGeneratingSmart}
+                        disabled={isAnyGenerating}
                         className="btn btn-secondary"
+                        aria-busy={isGeneratingSmart}
                       >
-                        {isGeneratingSmart ? "Generating..." : "Smart Plan"}
+                        {isGeneratingSmart ? "Working…" : "Smart Plan"}
                       </button>
 
                       {savedItinerary && (

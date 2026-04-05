@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Any
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import settings
+from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.ai import AIPlanRequest, ItineraryResponse, AIApplyRequest
 from app.services.ai.itinerary_service import ItineraryService
@@ -11,8 +13,10 @@ router = APIRouter()
 
 
 @router.post("/plan", response_model=ItineraryResponse)
+@limiter.limit(settings.AI_RATE_LIMIT)
 async def generate_trip_plan(
-    request: AIPlanRequest,
+    request: Request,
+    body: AIPlanRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -20,18 +24,20 @@ async def generate_trip_plan(
     service = ItineraryService(db)
     try:
         return await service.generate_itinerary(
-            trip_id=request.trip_id,
+            trip_id=body.trip_id,
             user_id=current_user.id,
-            interests_override=request.interests_override,
-            budget_override=request.budget_override,
+            interests_override=body.interests_override,
+            budget_override=body.budget_override,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/plan-smart", response_model=ItineraryResponse)
+@limiter.limit(settings.AI_RATE_LIMIT)
 async def generate_trip_plan_smart(
-    request: AIPlanRequest,
+    request: Request,
+    body: AIPlanRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -42,10 +48,10 @@ async def generate_trip_plan_smart(
     service = ItineraryService(db)
     try:
         return await service.generate_itinerary_rule_based(
-            trip_id=request.trip_id,
+            trip_id=body.trip_id,
             user_id=current_user.id,
-            interests_override=request.interests_override,
-            budget_override=request.budget_override,
+            interests_override=body.interests_override,
+            budget_override=body.budget_override,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

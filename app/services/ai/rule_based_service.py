@@ -3,10 +3,25 @@ import logging
 from datetime import timedelta
 
 import httpx
+from cachetools import TTLCache
 
 from app.core.config import settings
 from app.models.trip import Trip
 from app.schemas.ai import DayPlan, ItineraryItem, ItineraryResponse
+
+# ---------------------------------------------------------------------------
+# Module-level in-memory caches
+#
+# _geocode_cache  — destination string → (lat, lon)
+#   Coordinates for a city name don't change; a 24 h TTL is ample buffer for
+#   any rare edge cases (city renamed, new OSM data, etc.).
+#
+# _poi_cache      — (lat_rounded, lon_rounded, kinds) → raw POI list
+#   OpenTripMap data is fairly stable; 1 h TTL prevents hammering the quota
+#   while still surfacing newly-added places within a reasonable window.
+# ---------------------------------------------------------------------------
+_geocode_cache: TTLCache = TTLCache(maxsize=256, ttl=86_400)   # 24 h
+_poi_cache: TTLCache = TTLCache(maxsize=128, ttl=3_600)        # 1 h
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +50,16 @@ FETCH_LIMIT = 50
 
 
 async def _geocode(destination: str) -> tuple[float, float]:
-    """Resolve a city/destination string to lat/lon using Nominatim (OpenStreetMap)."""
+    """Resolve a city/destination string to lat/lon using Nominatim (OpenStreetMap).
+
+    Results are cached for 24 hours — coordinates for a given destination name
+    are stable and re-fetching them on every request wastes Nominatim quota.
+    """
+    cache_key = destination.strip().lower()
+    if cache_key in _geocode_cache:
+        logger.debug(f"Geocode cache hit for {destination!r}")
+        return _geocode_cache[cache_key]
+
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(
             NOMINATIM_URL,
@@ -48,11 +72,23 @@ async def _geocode(destination: str) -> tuple[float, float]:
     if not data:
         raise ValueError(f"Could not find location: '{destination}'. Try a more specific city name.")
 
-    return float(data[0]["lat"]), float(data[0]["lon"])
+    result = float(data[0]["lat"]), float(data[0]["lon"])
+    _geocode_cache[cache_key] = result
+    return result
 
 
 async def _fetch_pois(lat: float, lon: float, kinds: str) -> list[dict]:
-    """Fetch POIs from OpenTripMap within a 5km radius, sorted by rating."""
+    """Fetch POIs from OpenTripMap within a 5km radius, sorted by rating.
+
+    Results are cached for 1 hour, keyed by (lat, lon, kinds) with lat/lon
+    rounded to 3 decimal places (~110 m precision).  This avoids burning
+    OpenTripMap quota on repeat queries for the same destination.
+    """
+    cache_key = (round(lat, 3), round(lon, 3), kinds)
+    if cache_key in _poi_cache:
+        logger.debug(f"POI cache hit for key={cache_key}")
+        return _poi_cache[cache_key]
+
     async with httpx.AsyncClient(timeout=15) as client:
         response = await client.get(
             f"{OPENTRIPMAP_BASE}/radius",
@@ -74,7 +110,9 @@ async def _fetch_pois(lat: float, lon: float, kinds: str) -> list[dict]:
         for poi in pois[:5]:
             props = poi.get("properties") or poi
             logger.info(f"  POI sample: name={props.get('name')!r} rate={props.get('rate')} kinds={props.get('kinds')!r}")
-        return pois
+
+    _poi_cache[cache_key] = pois
+    return pois
 
 
 async def _fetch_poi_description(xid: str) -> str:

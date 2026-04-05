@@ -8,6 +8,8 @@ class ItineraryItem(BaseModel):
     time: Optional[str] = Field(None, description="Approximate time, e.g., '09:00AM' or 'Morning'")
     title: str = Field(..., description="Name of the activity")
     location: Optional[str] = None
+    lat: Optional[float] = Field(None, description="Latitude of the location")
+    lon: Optional[float] = Field(None, description="Longitude of the location")
     notes: Optional[str] = Field(None, description="Short description or tip")
     cost_estimate: Optional[str] = Field(None, description="e.g. '$20' or 'Free'")
 

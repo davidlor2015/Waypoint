@@ -30,7 +30,8 @@ Travel Planner lets users:
 - Register and log in with secure JWT-based authentication
 - Create, view, update, and delete trips with destination and date information
 - Generate day-by-day itineraries via a local LLM (Ollama) or a rule-based engine using live POI data
-- Apply generated itineraries back to saved trips
+- Preview a generated itinerary before saving it, then apply it to the trip record
+- View saved itineraries stored relationally (per-day, per-event) in the database
 
 ---
 
@@ -38,27 +39,32 @@ Travel Planner lets users:
 
 ### Backend
 
-| Technology       | Version       | Purpose                          |
-| ---------------- | ------------- | -------------------------------- |
-| Python           | 3.11+         | Primary language                 |
-| FastAPI          | 0.128.0       | Async REST API framework         |
-| SQLAlchemy       | 2.0.46        | ORM and database abstraction     |
-| Alembic          | 1.18.3        | Database schema migrations       |
-| Pydantic         | 2.12.5        | Request/response validation      |
-| PyMySQL          | 1.1.2         | MySQL database driver            |
-| python-jose      | 3.5.0         | JWT token encoding/decoding      |
-| passlib + bcrypt | 1.7.4 / 4.3.0 | Password hashing                 |
-| httpx            | 0.28.1        | Async HTTP client (Ollama calls) |
-| Uvicorn          | 0.40.0        | ASGI server                      |
+| Technology         | Version       | Purpose                                        |
+| ------------------ | ------------- | ---------------------------------------------- |
+| Python             | 3.11+         | Primary language                               |
+| FastAPI            | 0.128.0       | Async REST API framework                       |
+| SQLAlchemy         | 2.0.46        | ORM and database abstraction                   |
+| Alembic            | 1.18.3        | Database schema migrations                     |
+| Pydantic           | 2.12.5        | Request/response validation                    |
+| psycopg2-binary    | 2.9.9         | PostgreSQL/MySQL database driver               |
+| python-jose        | 3.5.0         | JWT token encoding/decoding                    |
+| passlib + bcrypt   | 1.7.4 / 4.3.0 | Password hashing                               |
+| httpx              | 0.28.1        | Async HTTP client (Ollama + OpenTripMap calls) |
+| slowapi            | 0.1.9         | Rate limiting on AI generation endpoints       |
+| cachetools         | 7.0.5         | In-memory TTLCache for geocoding and POI data  |
+| Uvicorn            | 0.40.0        | ASGI server                                    |
 
 ### Frontend
 
-| Technology | Version | Purpose                   |
-| ---------- | ------- | ------------------------- |
-| React      | 19.2.0  | UI framework              |
-| TypeScript | 5.9.3   | Type-safe JavaScript      |
-| Vite       | 7.2.4   | Build tool and dev server |
-| ESLint     | 9.39.1  | Code linting              |
+| Technology          | Version | Purpose                              |
+| ------------------- | ------- | ------------------------------------ |
+| React               | 19.2.0  | UI framework                         |
+| TypeScript          | 5.9.3   | Type-safe JavaScript                 |
+| Vite                | 7.2.4   | Build tool and dev server            |
+| zod                 | 4.x     | Client-side schema validation        |
+| react-hook-form     | 7.x     | Form state management with resolvers |
+| @hookform/resolvers | 5.x     | Bridges react-hook-form with zod     |
+| ESLint              | 9.39.1  | Code linting                         |
 
 ### Infrastructure
 
@@ -86,7 +92,7 @@ The application follows a clean separation of concerns across three layers:
 │         FastAPI Backend              │
 │         localhost:8000               │
 │                                     │
-│  Routes → Services → Models → DB    │
+│  Routes → Services → Repos → DB     │
 └──────────┬──────────────┬───────────┘
            │              │
            ▼              ▼
@@ -105,7 +111,7 @@ The frontend communicates with the backend exclusively through a REST API. The b
 ```
 travel-planner/
 ├── app/                              # FastAPI backend
-│   ├── main.py                       # App entry point, CORS, middleware, router registration
+│   ├── main.py                       # App entry point, CORS, rate-limit handler, routers
 │   ├── api/
 │   │   ├── deps.py                   # Dependency injection (auth, DB session)
 │   │   ├── middleware/
@@ -114,9 +120,10 @@ travel-planner/
 │   │       └── routes/
 │   │           ├── auth.py           # /v1/auth endpoints
 │   │           ├── trips.py          # /v1/trips CRUD endpoints
-│   │           └── ai.py             # /v1/ai generation endpoints
+│   │           └── ai.py             # /v1/ai generation endpoints (rate-limited)
 │   ├── core/
 │   │   ├── config.py                 # Settings loaded from environment
+│   │   ├── limiter.py                # slowapi Limiter singleton
 │   │   ├── logging.py                # Structured logging configuration
 │   │   └── security.py              # JWT creation, password hashing
 │   ├── db/
@@ -125,55 +132,59 @@ travel-planner/
 │   │   └── base.py                   # Model registry (for Alembic)
 │   ├── models/                       # SQLAlchemy ORM models
 │   │   ├── user.py
-│   │   └── trip.py
+│   │   ├── trip.py
+│   │   └── itinerary.py              # ItineraryDay + ItineraryEvent
 │   ├── repositories/                 # Data access layer — all DB queries live here
 │   │   ├── base.py                   # Generic BaseRepository[T] (get_by_id, add, delete)
-│   │   ├── user_repository.py        # User queries (get_by_email)
-│   │   └── trip_repository.py        # Trip queries (get_by_id_and_user, get_all_by_user)
+│   │   ├── user_repository.py
+│   │   ├── trip_repository.py
+│   │   └── itinerary_repository.py   # save_itinerary() atomic replace, get_days_by_trip()
 │   ├── schemas/                      # Pydantic request/response schemas
 │   │   ├── auth.py
 │   │   ├── user.py
 │   │   ├── trip.py
-│   │   └── ai.py
+│   │   ├── ai.py                     # ItineraryItem (+ lat/lon), DayPlan, ItineraryResponse
+│   │   └── itinerary.py              # ItineraryEventRead, ItineraryDayRead (ORM read schemas)
 │   └── services/
-│       ├── auth_service.py           # Registration and login business logic
-│       ├── trip_service.py           # Trip CRUD business logic
+│       ├── auth_service.py
+│       ├── trip_service.py
 │       ├── ai/
-│       │   ├── itinerary_service.py  # Orchestrates LLM itinerary generation
-│       │   └── rule_based_service.py # Rule-based generation via OpenTripMap POI data
+│       │   ├── itinerary_service.py  # LLM pipeline; apply now saves to relational tables
+│       │   └── rule_based_service.py # OpenTripMap pipeline with TTLCache on geocode + POIs
 │       └── llm/
-│           └── ollama_client.py      # Low-level Ollama HTTP client
-├── alembic/                          # Database migration scripts
+│           └── ollama_client.py
+├── alembic/
 │   └── versions/
 │       ├── eb8ceb58b88e_create_user_table.py
-│       └── 70fee314e52b_add_trips_table.py
+│       ├── 70fee314e52b_add_trips_table.py
+│       └── 3f8a1b9c2d4e_add_itinerary_tables.py   # itinerary_days + itinerary_events
 ├── tests/
-│   ├── conftest.py                   # Shared fixtures, test DB setup
+│   ├── conftest.py                   # Shared fixtures, SQLite test DB, rate-limiter reset
 │   ├── unit/
-│   │   └── test_auth_unit.py         # Password hashing, token creation
+│   │   └── test_auth_unit.py
 │   └── integration/
-│       ├── test_auth_api.py          # Register, login, /me endpoint
-│       ├── test_trips.py             # Full CRUD, user isolation, access control
-│       └── test_ai_plan.py           # AI generation with mocked Ollama client
+│       ├── test_auth_api.py
+│       ├── test_trips.py
+│       ├── test_ai_plan.py
+│       ├── test_itinerary_apply.py   # Repository + apply endpoint tests (Phase 1)
+│       └── test_rate_limit.py        # Rate limit + cache hit tests (Phase 2)
 ├── ui/                               # React frontend
 │   └── src/
 │       ├── App.tsx
-│       ├── App.css
 │       ├── features/
 │       │   ├── auth/
 │       │   │   └── LoginPage/
-│       │   │       ├── LoginPage.tsx
-│       │   │       ├── LoginPage.css
-│       │   │       └── index.ts
 │       │   └── trips/
-│       │       ├── TripList/
-│       │       ├── CreateTripForm/
+│       │       ├── TripList/         # Elapsed timer, AbortController, slow hint
+│       │       ├── CreateTripForm/   # react-hook-form + zod validation
 │       │       ├── ItineraryPanel/
-│       │       └── types.ts
+│       │       └── schemas/
+│       │           └── tripSchema.ts # Zod schema mirroring TripCreate Pydantic model
 │       └── shared/
 │           └── api/
-│               ├── auth.ts           # Auth API functions
-│               └── trips.ts          # Trips API functions
+│               ├── auth.ts
+│               ├── trips.ts
+│               └── ai.ts             # AbortSignal support, timeout constants
 ├── requirements.txt
 ├── alembic.ini
 └── .env
@@ -193,41 +204,38 @@ Routes → Services → Repositories → DB
 
 **Routes** (`app/api/v1/routes/`) — Handle HTTP concerns only: parse requests, delegate to services, return responses. No business logic or DB queries live here.
 
-**Services** (`app/services/`) — Own all business logic. `AuthService` handles registration and login. `TripService` handles CRUD with ownership checks. `ItineraryService` orchestrates the full LLM pipeline. Services raise `HTTPException` for domain errors.
+**Services** (`app/services/`) — Own all business logic. `AuthService` handles registration and login. `TripService` handles CRUD with ownership checks. `ItineraryService` orchestrates the full LLM pipeline and delegates persistence to `ItineraryRepository`.
 
-**Repositories** (`app/repositories/`) — The only layer that writes SQLAlchemy queries. `BaseRepository[T]` provides generic `get_by_id`, `add`, and `delete` via Python generics. Subclasses add domain-specific queries. This makes DB access independently testable and swappable.
+**Repositories** (`app/repositories/`) — The only layer that writes SQLAlchemy queries. `BaseRepository[T]` provides generic `get_by_id`, `add`, and `delete`. `ItineraryRepository` handles the atomic save of nested `ItineraryDay`/`ItineraryEvent` rows.
 
-**Models** (`app/models/`) — SQLAlchemy ORM definitions. Represent the database schema as Python classes.
+**Models** (`app/models/`) — SQLAlchemy ORM definitions. `ItineraryDay` and `ItineraryEvent` extend the schema with a fully relational itinerary structure.
 
-**Schemas** (`app/schemas/`) — Pydantic v2 models that define what data comes in and goes out of the API. Deliberately separate from ORM models — the database shape and the API shape are not the same thing.
+**Schemas** (`app/schemas/`) — Pydantic v2 models for API request/response. Separate from ORM models — the API shape and the database shape evolve independently.
+
+### Rate Limiting
+
+AI generation endpoints (`/v1/ai/plan`, `/v1/ai/plan-smart`) are rate-limited per client IP using `slowapi`. The limit is configured via the `AI_RATE_LIMIT` environment variable (default: `10/minute`). The `/v1/ai/apply` endpoint is intentionally not rate-limited — it is a cheap DB write.
+
+Exceeded limits return `HTTP 429 Too Many Requests`.
 
 ### API Versioning
 
-All routes are prefixed with `/v1/` (e.g. `POST /v1/auth/login`, `GET /v1/trips/`). This allows non-breaking changes to be introduced under `/v2/` in the future without disrupting existing clients.
+All routes are prefixed with `/v1/`. This allows non-breaking changes under `/v2/` in the future without disrupting existing clients.
 
 ### Dependency Injection
 
-FastAPI's `Depends()` system is used throughout to inject shared resources:
+FastAPI's `Depends()` system injects shared resources:
 
 ```python
-# app/api/deps.py
 SessionDep = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ```
 
-Route functions declare what they need as parameters. FastAPI handles the wiring. This makes routes easy to test — dependencies can be swapped out in test configuration without changing production code.
+Route functions declare what they need. FastAPI handles wiring. Dependencies are swapped in tests without changing production code.
 
 ### Data Validation
 
-Pydantic v2 validates all incoming request data automatically. Invalid requests are rejected before reaching route logic. For example, `TripCreate` enforces that `end_date >= start_date` via a `@model_validator`:
-
-```python
-@model_validator(mode="after")
-def validate_dates(self):
-    if self.end_date < self.start_date:
-        raise ValueError("end_date must be on or after start_date")
-    return self
-```
+Pydantic v2 validates all incoming request data. Invalid requests are rejected before reaching route logic. `TripCreate` enforces `end_date >= start_date` via a `@model_validator`. `ItineraryResponse` coerces LLM type mismatches (int costs, string tips) to the expected types before reaching the service layer.
 
 ---
 
@@ -235,35 +243,50 @@ def validate_dates(self):
 
 ### Feature-Based Structure
 
-The frontend is organized by feature rather than by file type. Each feature owns its components:
+The frontend is organized by feature. Each feature owns its components, styles, and (now) its validation schemas:
 
 ```
 features/
   auth/
-    LoginPages.tsx
+    LoginPage/
   trips/
-    TripList.tsx
-    CreateTripForm.tsx
+    TripList/         ← loading states, abort controller
+    CreateTripForm/   ← react-hook-form + zod
+    ItineraryPanel/
+    schemas/
+      tripSchema.ts   ← Zod schema mirroring backend TripCreate
 ```
 
-This scales better than grouping all components together as the app grows.
+### Form Validation
+
+`CreateTripForm` uses `react-hook-form` with a `zodResolver` to validate all fields before any network request is made. The Zod schema (`tripSchema.ts`) mirrors the backend `TripCreate` Pydantic model exactly:
+
+- `title` and `destination`: required, max 255 characters
+- `start_date` and `end_date`: required ISO date strings
+- Cross-field: `end_date >= start_date` (same rule as the backend `@model_validator`)
+- `notes`: optional
+
+Validation errors appear inline below the relevant field immediately on blur/submit. The `noValidate` attribute disables browser-native validation so Zod is the single source of truth.
+
+### AI Loading State
+
+Long-running AI requests (Ollama on CPU can take 60–120 s) are handled with three mechanisms:
+
+1. **AbortController timeout** — every `planItinerary` / `planItinerarySmart` call receives an `AbortSignal` tied to a 3-minute hard timeout. If the server does not respond in time, the request is cancelled and a clear message is shown to the user.
+2. **Elapsed timer** — a `setInterval` (stored in `useRef` to avoid stale closures) increments a per-trip counter every second. The count is shown in the generating indicator inside the trip card.
+3. **Slow hint** — after 30 seconds (`AI_SLOW_THRESHOLD_MS`) a note appears: *"The AI is still working — LLM responses can take 1–2 minutes on CPU."*
+
+The `AbortSignal` parameter in the API layer is the designated seam for future SSE streaming: when the backend exposes an SSE endpoint, the `fetch` call is replaced with `new EventSource(url)` at that single call site.
 
 ### API Layer Separation
 
 All `fetch` calls are isolated in `shared/api/`. React components never call `fetch` directly — they call typed functions that return typed data:
 
 ```
-shared/api/auth.ts    → login(), getMe()
+shared/api/auth.ts    → login(), register()
 shared/api/trips.ts   → getTrips(), createTrip(), deleteTrip()
+shared/api/ai.ts      → planItinerary(), planItinerarySmart(), applyItinerary()
 ```
-
-This means if the API changes, only one file needs updating. Components don't need to know about URLs, headers, or HTTP methods.
-
-### State Management
-
-State is managed with React's built-in `useState` and `useEffect` hooks. The root `App.tsx` owns authentication state (`user`, `token`) and passes callbacks down to children. This keeps auth logic centralized in one place.
-
-Component-level state (form inputs, loading flags, errors) stays local to the component that owns it.
 
 ---
 
@@ -277,7 +300,7 @@ Uses a local Ollama instance running `llama3.2:3b`. No external API keys require
 
 ```
 1. Fetch trip from DB         → verify ownership, get destination/dates
-2. Build system prompt        → set persona, inject Pydantic JSON schema
+2. Build system prompt        → set persona, inject JSON schema constraints
 3. Build user prompt          → inject trip details, interests, budget
 4. Call Ollama                → async HTTP POST via httpx
 5. Clean response             → strip markdown code fences if present
@@ -286,35 +309,39 @@ Uses a local Ollama instance running `llama3.2:3b`. No external API keys require
 8. Return structured object   → guaranteed shape, safe to use
 ```
 
-The system prompt injects the full Pydantic JSON schema of `ItineraryResponse` directly into the LLM context, reducing hallucinated or malformed responses.
-
 ### Strategy 2 — Rule-Based (OpenTripMap)
 
 Generates itineraries from real POI data without an LLM. Entirely free — no credit card required.
 
 ```
 1. Fetch trip from DB         → verify ownership, get destination/dates
-2. Geocode destination        → Nominatim (OpenStreetMap) converts city name → lat/lon
+2. Geocode destination        → Nominatim converts city name → lat/lon (cached 24 h)
 3. Map user interests         → translate keywords to OpenTripMap category kinds
-4. Fetch POIs                 → OpenTripMap returns rated attractions within 5km
+4. Fetch POIs                 → OpenTripMap radius endpoint (cached 1 h per location+kinds)
 5. Score & rank               → sort by POI rating, deduplicate by name
-6. Assemble days              → slot top N POIs across trip days (max 3 days, 3 per day)
+6. Assemble days              → slot top N POIs across trip days (max 7 days, 3 per day)
 7. Return ItineraryResponse   → identical shape to LLM output
 ```
+
+**Caching:** Nominatim responses are cached for 24 hours (coordinates for a city name are stable). OpenTripMap POI lists are cached for 1 hour keyed by `(lat_rounded_3dp, lon_rounded_3dp, kinds)`. Both caches are module-level `TTLCache` instances from `cachetools`. This avoids burning external API quota on repeated requests for the same destination.
 
 **Interest keywords** (comma-separated): `food`, `history`, `nature`, `art`, `shopping`, `religion`, `beach`, `sport`, `nightlife`
 
 **Budget values**: `budget`, `moderate`, `luxury`
 
-If no POIs match the requested interest categories (e.g. `beach` in a landlocked city), the service automatically retries with the broadest category (`interesting_places`).
+If no POIs match the requested interest categories, the service automatically retries with the broadest category (`interesting_places`).
 
 ### Two-Step Save Flow
 
-Generation and saving are intentionally separate. Both strategies use the same save endpoint:
+Generation and saving are intentionally separate:
 
 - `POST /v1/ai/plan` — LLM generation, preview only
 - `POST /v1/ai/plan-smart` — Rule-based generation, preview only
 - `POST /v1/ai/apply` — Save any approved itinerary to the trip record
+
+On apply, the itinerary is persisted in two places:
+1. **Relational tables** (`itinerary_days`, `itinerary_events`) — the source of truth for structured queries.
+2. **`trip.description`** — a plain-text + JSON fallback kept for backward compatibility with the frontend parser.
 
 ---
 
@@ -322,33 +349,60 @@ Generation and saving are intentionally separate. Both strategies use the same s
 
 ### Schema
 
-Two tables managed via Alembic migrations:
+Four tables managed via Alembic migrations:
 
 **users**
-| Column | Type | Notes |
-|---|---|---|
-| id | INT | Primary key |
-| email | VARCHAR | Unique |
-| hashed_password | VARCHAR | bcrypt hash |
-| is_active | BOOLEAN | Default true |
-| created_at | DATETIME | Auto-set |
+| Column          | Type     | Notes            |
+|-----------------|----------|------------------|
+| id              | INT      | Primary key      |
+| email           | VARCHAR  | Unique           |
+| hashed_password | VARCHAR  | bcrypt hash      |
+| is_active       | BOOLEAN  | Default true     |
 
 **trips**
-| Column | Type | Notes |
-|---|---|---|
-| id | INT | Primary key |
-| user_id | INT | Foreign key → users.id |
-| title | VARCHAR | Required |
-| destination | VARCHAR | Required |
-| start_date | DATE | Required |
-| end_date | DATE | Required |
-| description | TEXT | Optional |
-| notes | TEXT | Optional |
-| created_at | DATETIME | Auto-set |
+| Column      | Type     | Notes                   |
+|-------------|----------|-------------------------|
+| id          | INT      | Primary key             |
+| user_id     | INT      | FK → users.id           |
+| title       | VARCHAR  | Required                |
+| destination | VARCHAR  | Required, indexed       |
+| start_date  | DATE     | Required                |
+| end_date    | DATE     | Required                |
+| description | TEXT     | Legacy itinerary string |
+| notes       | TEXT     | User interests/notes    |
+| created_at  | DATETIME | Auto-set                |
+
+**itinerary_days**
+| Column     | Type    | Notes                          |
+|------------|---------|--------------------------------|
+| id         | INT     | Primary key                    |
+| trip_id    | INT     | FK → trips.id (CASCADE DELETE) |
+| day_number | INT     | 1-indexed day of the itinerary |
+| day_date   | VARCHAR | ISO date string (nullable)     |
+
+**itinerary_events**
+| Column       | Type    | Notes                                  |
+|--------------|---------|----------------------------------------|
+| id           | INT     | Primary key                            |
+| day_id       | INT     | FK → itinerary_days.id (CASCADE DELETE)|
+| sort_order   | INT     | Preserves activity order within a day  |
+| time         | VARCHAR | e.g. "09:00 AM" (nullable)             |
+| title        | VARCHAR | Activity name                          |
+| location     | VARCHAR | Human-readable location (nullable)     |
+| lat          | FLOAT   | Latitude (nullable)                    |
+| lon          | FLOAT   | Longitude (nullable)                   |
+| notes        | TEXT    | Description / tip (nullable)           |
+| cost_estimate| VARCHAR | e.g. "$20", "Free" (nullable)          |
 
 ### Migrations
 
-Alembic handles schema changes. Each migration is a versioned Python file with `upgrade()` and `downgrade()` functions, making schema changes reproducible and reversible across environments.
+| File | Description |
+|------|-------------|
+| `eb8ceb58b88e` | Create users table |
+| `70fee314e52b` | Add trips table |
+| `3f8a1b9c2d4e` | Add itinerary_days and itinerary_events tables |
+
+Alembic handles schema changes as versioned Python files with `upgrade()` and `downgrade()`, making changes reproducible and reversible across environments.
 
 ---
 
@@ -367,11 +421,27 @@ Alembic handles schema changes. Each migration is a versioned Python file with `
 
 ### Password Hashing
 
-Passwords are hashed with bcrypt via `passlib`. A bcrypt-specific detail is handled: bcrypt truncates input at 72 bytes. For passwords longer than 72 bytes, the plain text is first SHA-256 hashed before bcrypt hashing, preventing silent truncation.
+Passwords are hashed with bcrypt via `passlib`. A SHA-256 pre-hash step handles bcrypt's 72-byte truncation limit — long passwords are not silently weakened.
 
 ### User Isolation
 
 Every trip query filters by both `trip_id` and `current_user.id`. A user cannot read, modify, or delete another user's trips — even if they know the trip ID.
+
+### CORS
+
+`CORSMiddleware` is configured with an explicit origin allowlist from `CORS_ORIGINS` (defaults to `http://localhost:5173`). No wildcard origins are used in production configuration.
+
+### Rate Limiting
+
+The two AI generation endpoints are protected by `slowapi` per client IP:
+
+| Endpoint            | Limit (default)  |
+|---------------------|------------------|
+| `POST /v1/ai/plan`  | 10 requests/min  |
+| `POST /v1/ai/plan-smart` | 10 requests/min |
+| `POST /v1/ai/apply` | No limit         |
+
+The limit is configurable via `AI_RATE_LIMIT` env var using slowapi's string syntax (e.g. `"20/minute"`, `"100/hour"`).
 
 ---
 
@@ -381,24 +451,26 @@ Tests use `pytest` with the following approach:
 
 ### Isolated Test Database
 
-Tests run against an in-memory SQLite database, not the production MySQL instance. Each test function gets a fresh transaction that is rolled back after the test completes — no test data persists between tests and no cleanup code is needed.
+Tests run against an in-memory SQLite database, not the production MySQL instance. Each test gets a fresh transaction rolled back after the test — no test data persists and no cleanup code is needed.
 
 ### Dependency Override
 
-FastAPI's `dependency_overrides` replaces the production database session with the test session. The application code runs unchanged — only the injected dependency differs.
+FastAPI's `dependency_overrides` replaces the production database session with the test session. Application code runs unchanged — only the injected dependency differs.
+
+### Rate Limiter Isolation
+
+An `autouse` fixture calls `limiter._storage.reset()` before and after every test, preventing rate-limit hits in one test from bleeding into the next. The `AI_RATE_LIMIT` env var is set to `"3/minute"` in the test environment so rate-limit exhaustion can be triggered with just 4 requests.
 
 ### Test Coverage
 
-| File                              | Type        | What it tests                               |
-| --------------------------------- | ----------- | ------------------------------------------- |
-| `unit/test_auth_unit.py`          | Unit        | Password hashing, token creation            |
-| `integration/test_auth_api.py`    | Integration | Register, login, wrong password, /v1/auth/me |
-| `integration/test_trips.py`       | Integration | Full CRUD, user isolation, access control   |
-| `integration/test_ai_plan.py`     | Integration | AI generation with mocked Ollama client     |
-
-### AI Test Isolation
-
-The Ollama client is mocked with `AsyncMock` in AI tests. This means AI tests run instantly without requiring a real LLM, and can simulate any response shape to test parsing logic.
+| File | Type | What it tests |
+|------|------|---------------|
+| `unit/test_auth_unit.py` | Unit | Password hashing, token creation |
+| `integration/test_auth_api.py` | Integration | Register, login, wrong password, /me |
+| `integration/test_trips.py` | Integration | Full CRUD, user isolation, access control |
+| `integration/test_ai_plan.py` | Integration | LLM generation with mocked Ollama client |
+| `integration/test_itinerary_apply.py` | Integration | Repository save/replace/order; apply endpoint saves relational rows, updates trip, reapply replaces, wrong-owner 404 |
+| `integration/test_rate_limit.py` | Integration | Per-IP limit enforced on plan/plan-smart; apply not limited; geocode and POI fetch cache hit verified via httpx-layer patching |
 
 ---
 
@@ -406,25 +478,26 @@ The Ollama client is mocked with `AsyncMock` in AI tests. This means AI tests ru
 
 ### Single Responsibility
 
-Each file and class has one job. Routes handle HTTP. Services handle business logic. Schemas handle validation. Models handle persistence. The Ollama client handles one thing: making HTTP calls to Ollama.
+Each file and class has one job. Routes handle HTTP. Services handle business logic. Repositories handle DB access. Schemas handle validation. The Ollama client does one thing: make HTTP calls to Ollama.
 
 ### Separation of Concerns
 
-The API shape (Pydantic schemas) is deliberately separate from the database shape (SQLAlchemy models). This means the database can change without breaking the API contract, and vice versa.
+The API shape (Pydantic schemas) is deliberately separate from the database shape (SQLAlchemy models). The database can change without breaking the API contract, and vice versa. Client-side Zod schemas mirror the backend Pydantic schemas, creating a consistent validation contract across the full stack.
 
 ### Fail-Safe Defaults
 
 - Unauthenticated requests are rejected at the dependency level before reaching route logic
 - Invalid data is rejected by Pydantic before reaching the database
 - LLM output is validated through Pydantic before being returned to the client — malformed AI responses raise a controlled error rather than crashing
+- Client requests to AI endpoints are guarded by a hard 3-minute `AbortController` timeout — the UI never hangs indefinitely
 
 ### Type Safety
 
-The backend uses Python type annotations throughout, which enables IDE tooling, catches bugs early, and makes Pydantic and FastAPI work correctly. The frontend uses TypeScript for the same reasons — API responses have typed interfaces so incorrect data access is caught at compile time.
+The backend uses Python type annotations throughout. The frontend uses TypeScript — API responses have typed interfaces so incorrect data access is caught at compile time. The `zod` schema on the frontend is the `TypeScript` source of truth for form data (`TripFormData = z.infer<typeof tripSchema>`).
 
 ### Environment-Based Configuration
 
-All secrets and environment-specific values (database URL, JWT secret, Ollama URL) are loaded from environment variables via `pydantic-settings`. No secrets are hardcoded in application logic.
+All secrets and environment-specific values (database URL, JWT secret, Ollama URL, rate limit, CORS origins) are loaded from environment variables via `pydantic-settings`. No secrets are hardcoded in application logic.
 
 ---
 
@@ -458,7 +531,7 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Backend runs at `http://localhost:8000`. Interactive API docs available at `http://localhost:8000/docs`.
+Backend runs at `http://localhost:8000`. Interactive API docs at `http://localhost:8000/docs`.
 
 ### Frontend Setup
 
@@ -474,25 +547,29 @@ Frontend runs at `http://localhost:5173`.
 
 ```bash
 # From project root with venv activated
-pytest tests/
+pytest tests/ -v
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable                      | Required | Description                       |
-| ----------------------------- | -------- | --------------------------------- |
-| `DATABASE_URL`                | Yes      | MySQL connection string           |
-| `JWT_SECRET`                  | Yes      | Secret key for signing JWT tokens |
-| `JWT_ALG`                     | Yes      | JWT algorithm (default: `HS256`)  |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes      | Token lifetime in minutes         |
-| `OLLAMA_BASE_URL`             | Yes      | Ollama server URL                 |
-| `OLLAMA_MODEL`                | Yes      | Model name (e.g. `llama3.2:3b`)   |
-| `OLLAMA_TIMEOUT_SECONDS`      | Yes      | Request timeout for LLM calls     |
-| `OPENTRIPMAP_API_KEY`         | No       | Free key from opentripmap.com — required for `/v1/ai/plan-smart` |
+### Backend
 
-Frontend:
+| Variable                      | Required | Description                                                     |
+| ----------------------------- | -------- | --------------------------------------------------------------- |
+| `DATABASE_URL`                | Yes      | MySQL connection string                                         |
+| `JWT_SECRET`                  | Yes      | Secret key for signing JWT tokens                               |
+| `JWT_ALG`                     | Yes      | JWT algorithm (default: `HS256`)                                |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Yes      | Token lifetime in minutes                                       |
+| `CORS_ORIGINS`                | No       | Comma-separated allowed origins (default: `http://localhost:5173`) |
+| `OLLAMA_BASE_URL`             | Yes      | Ollama server URL                                               |
+| `OLLAMA_MODEL`                | Yes      | Model name (e.g. `llama3.2:3b`)                                 |
+| `OLLAMA_TIMEOUT_SECONDS`      | Yes      | Request timeout for LLM calls                                   |
+| `OPENTRIPMAP_API_KEY`         | No       | Free key from opentripmap.com — required for `/v1/ai/plan-smart` |
+| `AI_RATE_LIMIT`               | No       | slowapi limit string for AI endpoints (default: `10/minute`)    |
+
+### Frontend
 
 | Variable       | Description                                        |
 | -------------- | -------------------------------------------------- |
@@ -502,33 +579,33 @@ Frontend:
 
 ## API Reference
 
-Full interactive documentation is available at `http://localhost:8000/docs` when the backend is running.
+Full interactive documentation at `http://localhost:8000/docs` when the backend is running.
 
 ### Auth
 
-| Method | Endpoint            | Description               |
-| ------ | ------------------- | ------------------------- |
-| POST   | `/v1/auth/register` | Create a new user account |
-| POST   | `/v1/auth/login`    | Log in, receive JWT token |
-| GET    | `/v1/auth/me`       | Get current user profile  |
+| Method | Endpoint            | Auth | Description               |
+| ------ | ------------------- | ---- | ------------------------- |
+| POST   | `/v1/auth/register` | —    | Create a new user account |
+| POST   | `/v1/auth/login`    | —    | Log in, receive JWT token |
+| GET    | `/v1/auth/me`       | JWT  | Get current user profile  |
 
 ### Trips
 
-| Method | Endpoint         | Description                     |
-| ------ | ---------------- | ------------------------------- |
-| GET    | `/v1/trips/`     | List all trips for current user |
-| POST   | `/v1/trips/`     | Create a new trip               |
-| GET    | `/v1/trips/{id}` | Get a single trip               |
-| PATCH  | `/v1/trips/{id}` | Partially update a trip         |
-| DELETE | `/v1/trips/{id}` | Delete a trip                   |
+| Method | Endpoint         | Auth | Description                     |
+| ------ | ---------------- | ---- | ------------------------------- |
+| GET    | `/v1/trips/`     | JWT  | List all trips for current user |
+| POST   | `/v1/trips/`     | JWT  | Create a new trip               |
+| GET    | `/v1/trips/{id}` | JWT  | Get a single trip               |
+| PATCH  | `/v1/trips/{id}` | JWT  | Partially update a trip         |
+| DELETE | `/v1/trips/{id}` | JWT  | Delete a trip                   |
 
 ### AI
 
-| Method | Endpoint             | Description                                          |
-| ------ | -------------------- | ---------------------------------------------------- |
-| POST   | `/v1/ai/plan`        | Generate an itinerary via LLM (preview only)         |
-| POST   | `/v1/ai/plan-smart`  | Generate an itinerary via rule-based engine (preview only) |
-| POST   | `/v1/ai/apply`       | Save any generated itinerary to a trip               |
+| Method | Endpoint            | Auth | Rate Limited | Description                                           |
+| ------ | ------------------- | ---- | ------------ | ----------------------------------------------------- |
+| POST   | `/v1/ai/plan`       | JWT  | Yes          | Generate an itinerary via LLM (preview only)          |
+| POST   | `/v1/ai/plan-smart` | JWT  | Yes          | Generate an itinerary via rule-based engine (preview only) |
+| POST   | `/v1/ai/apply`      | JWT  | No           | Save any generated itinerary to a trip                |
 
 Both plan endpoints accept the same request body:
 
@@ -539,3 +616,5 @@ Both plan endpoints accept the same request body:
   "budget_override": "moderate"
 }
 ```
+
+Exceeded rate limits return `HTTP 429 Too Many Requests`.

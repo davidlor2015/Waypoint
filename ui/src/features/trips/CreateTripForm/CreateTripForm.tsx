@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { createTrip, type Trip } from "../../../shared/api/trips";
+import { tripSchema, type TripFormData } from "../schemas/tripSchema";
 import "./CreateTripForm.css";
 
 interface CreateTripFormProps {
@@ -13,91 +15,127 @@ export const CreateTripForm = ({
   onSuccess,
   onCancel,
 }: CreateTripFormProps) => {
-  const [title, setTitle] = useState("");
-  const [destination, setDestination] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [interests, setInterests] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<TripFormData>({
+    resolver: zodResolver(tripSchema),
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    // 1. Prevent default form submission (stops page reload)
-    e.preventDefault();
-
-    // Start loading and clear any previous errors
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // 2. Call createTrip with the form fields
-      // Mapping camelCase state to the snake_case keys the API expects
-      const newTrip = await createTrip(token, {
-        title,
-        destination,
-        start_date: startDate,
-        end_date: endDate,
-        notes: interests,
-      });
-
-      // 3. Call onSuccess with the returned trip
-      onSuccess(newTrip);
-    } catch (err) {
-      // 4. Handle errors gracefully
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create trip. Please try again.",
-      );
-    } finally {
-      // Ensure loading state is reset whether it succeeds or fails
-      setIsLoading(false);
-    }
+  const onSubmit = async (data: TripFormData) => {
+    const newTrip = await createTrip(token, {
+      title: data.title,
+      destination: data.destination,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      notes: data.notes,
+    });
+    onSuccess(newTrip);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="create-trip-form">
+    <form onSubmit={handleSubmit(onSubmit)} className="create-trip-form" noValidate>
       <h2>New Trip</h2>
 
-      <input
-        placeholder="Title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        required
-      />
-      <input
-        placeholder="Destination"
-        value={destination}
-        onChange={(e) => setDestination(e.target.value)}
-        required
-      />
-      <input
-        type="date"
-        value={startDate}
-        onChange={(e) => setStartDate(e.target.value)}
-        required
-      />
-      <input
-        type="date"
-        value={endDate}
-        onChange={(e) => setEndDate(e.target.value)}
-        required
-      />
-      <input
-        placeholder="Interests (e.g. food, history, nature)"
-        value={interests}
-        onChange={(e) => setInterests(e.target.value)}
-        required
-      />
+      <div className="ctf-field">
+        <label htmlFor="ctf-title" className="ctf-label">
+          Title
+        </label>
+        <input
+          id="ctf-title"
+          placeholder="e.g. Summer in Rome"
+          className={errors.title ? "ctf-input ctf-input--error" : "ctf-input"}
+          {...register("title")}
+        />
+        {errors.title && (
+          <p className="ctf-error" role="alert">
+            {errors.title.message}
+          </p>
+        )}
+      </div>
 
-      {error && <div className="create-trip-error">{error}</div>}
+      <div className="ctf-field">
+        <label htmlFor="ctf-destination" className="ctf-label">
+          Destination
+        </label>
+        <input
+          id="ctf-destination"
+          placeholder="e.g. Rome, Italy"
+          className={errors.destination ? "ctf-input ctf-input--error" : "ctf-input"}
+          {...register("destination")}
+        />
+        {errors.destination && (
+          <p className="ctf-error" role="alert">
+            {errors.destination.message}
+          </p>
+        )}
+      </div>
 
-      <button type="submit" disabled={isLoading}>
-        {isLoading ? "Creating..." : "Create Trip"}
-      </button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <div className="ctf-row">
+        <div className="ctf-field">
+          <label htmlFor="ctf-start-date" className="ctf-label">
+            Start date
+          </label>
+          <input
+            id="ctf-start-date"
+            type="date"
+            className={errors.start_date ? "ctf-input ctf-input--error" : "ctf-input"}
+            {...register("start_date")}
+          />
+          {errors.start_date && (
+            <p className="ctf-error" role="alert">
+              {errors.start_date.message}
+            </p>
+          )}
+        </div>
+
+        <div className="ctf-field">
+          <label htmlFor="ctf-end-date" className="ctf-label">
+            End date
+          </label>
+          <input
+            id="ctf-end-date"
+            type="date"
+            className={errors.end_date ? "ctf-input ctf-input--error" : "ctf-input"}
+            {...register("end_date")}
+          />
+          {errors.end_date && (
+            <p className="ctf-error" role="alert">
+              {errors.end_date.message}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="ctf-field">
+        <label htmlFor="ctf-notes" className="ctf-label">
+          Interests{" "}
+          <span className="ctf-label-hint">(optional — e.g. food, history, nature)</span>
+        </label>
+        <input
+          id="ctf-notes"
+          placeholder="food, history, nature"
+          className="ctf-input"
+          {...register("notes")}
+        />
+      </div>
+
+      {/* react-hook-form surfaces network/server errors through the root error */}
+      {errors.root && (
+        <p className="ctf-error ctf-error--root" role="alert">
+          {errors.root.message}
+        </p>
+      )}
+
+      <div className="ctf-actions">
+        <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+          {isSubmitting ? "Creating…" : "Create Trip"}
+        </button>
+        <button type="button" onClick={onCancel} className="btn btn-secondary">
+          Cancel
+        </button>
+      </div>
     </form>
   );
 };

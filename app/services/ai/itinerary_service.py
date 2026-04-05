@@ -7,6 +7,7 @@ from app.schemas.ai import ItineraryResponse
 from app.services.llm.ollama_client import OllamaClient
 from app.services.ai.rule_based_service import generate_rule_based_itinerary
 from app.repositories.trip_repository import TripRepository
+from app.repositories.itinerary_repository import ItineraryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 class ItineraryService:
     def __init__(self, db: Session):
         self.trip_repo = TripRepository(db)
+        self.itinerary_repo = ItineraryRepository(db)
         self.llm_client = OllamaClient()
 
     def _build_system_prompt(self) -> str:
@@ -106,12 +108,21 @@ Limit to 3 days max, 3 activities per day. Return JSON only."""
     def apply_itinerary_to_db(self, trip_id: int, user_id: int,
                               itinerary: ItineraryResponse) -> Trip:
         """
-        Updates the database with the approved itinerary.
+        Persists the approved itinerary in two places:
+
+        1. Relational tables (itinerary_days / itinerary_events) — the source of
+           truth for structured queries and future API use.
+        2. trip.description — kept as a plain-text + JSON fallback so the existing
+           frontend parser continues to work without changes in this phase.
         """
         trip = self.trip_repo.get_by_id_and_user(trip_id, user_id)
         if not trip:
             raise ValueError("Trip not found.")
 
+        # Save structured data to relational tables.
+        self.itinerary_repo.save_itinerary(trip_id, itinerary)
+
+        # Update trip metadata (title + legacy description string).
         return self.trip_repo.update(trip, {
             "title": itinerary.title,
             "description": (

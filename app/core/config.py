@@ -10,6 +10,10 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Rate limit applied to the expensive AI generation endpoints.
+    # Uses slowapi string syntax: "<count>/<period>" e.g. "10/minute", "100/hour".
+    AI_RATE_LIMIT: str = "10/minute"
+
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_TIMEOUT_SECONDS: int = 60

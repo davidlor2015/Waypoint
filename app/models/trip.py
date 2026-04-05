@@ -25,3 +25,9 @@ class Trip(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     owner: Mapped["User"] = relationship("User", back_populates="trips")
+    itinerary_days: Mapped[list["ItineraryDay"]] = relationship(
+        "ItineraryDay",
+        back_populates="trip",
+        cascade="all, delete-orphan",
+        order_by="ItineraryDay.day_number",
+    )
