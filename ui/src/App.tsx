@@ -6,9 +6,9 @@ import { TripList } from "./features/trips/TripList";
 import { CreateTripForm } from "./features/trips/CreateTripForm";
 import { Dashboard } from "./features/dashboard";
 import { getTrips, type Trip } from "./shared/api/trips";
-import "./App.css";
+import { AppShell, type AppView } from "./app/AppShell";
 
-type View = "trips" | "dashboard";
+type View = AppView;
 
 function App() {
   const [view, setView] = useState<View>("trips");
@@ -59,32 +59,20 @@ function App() {
   };
 
   if (loading)
-    return <div className="app-loading">Loading user profile...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white font-sans text-gray text-sm">
+        Loading…
+      </div>
+    );
 
   if (user) {
     return (
-      <div className="app-layout">
-        <header className="app-header">
-          <nav className="app-nav">
-            <button
-              className={`nav-tab${view === "dashboard" ? " active" : ""}`}
-              onClick={() => switchView("dashboard")}
-            >
-              Dashboard
-            </button>
-            <button
-              className={`nav-tab${view === "trips" ? " active" : ""}`}
-              onClick={() => switchView("trips")}
-            >
-              My Trips
-            </button>
-          </nav>
-          <div className="app-header-right">
-            <span>{user.email}</span>
-            <button onClick={handleLogout}>Logout</button>
-          </div>
-        </header>
-
+      <AppShell
+        view={view}
+        onViewChange={switchView}
+        userEmail={user.email}
+        onLogout={handleLogout}
+      >
         {view === "dashboard" && <Dashboard trips={trips} />}
 
         {view === "trips" &&
@@ -103,7 +91,7 @@ function App() {
               onCreateClick={() => setShowCreateForm(true)}
             />
           ))}
-      </div>
+      </AppShell>
     );
   }
 

@@ -1,58 +1,118 @@
-// src/features/dashboard/Dashboard.tsx
-import { useMemo } from "react";
+import { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
-import type { Trip } from "../../shared/api/trips";
-import "./Dashboard.css";
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Cell,
+} from 'recharts';
+import type { Trip } from '../../shared/api/trips';
 
-interface Props {
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DashboardProps {
   trips: Trip[];
 }
 
-const COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#818cf8"];
-
-function tripDuration(start: string, end: string): number {
-  return Math.max(
-    1,
-    Math.round(
-      (new Date(end).getTime() - new Date(start).getTime()) /
-        (1000 * 60 * 60 * 24),
-    ),
-  );
+interface StatConfig {
+  emoji: string;
+  value: number;
+  label: string;
+  valueColor: string;
+  bgColor: string;
+  borderColor: string;
 }
 
-function parseBudgetValue(val: string): number {
-  const n = parseFloat(String(val).replace(/[^0-9.]/g, ""));
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const CHART_COLORS = ['#0077FF', '#FF6B6B', '#FFD166', '#10B981', '#005FCC'];
+
+const TOOLTIP_STYLE: React.CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid #F3F4F6',
+  boxShadow: '0 4px 16px rgba(30,41,59,0.08)',
+  fontSize: '0.8125rem',
+  fontFamily: 'Poppins, sans-serif',
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const tripDuration = (start: string, end: string): number =>
+  Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
+
+const parseBudgetValue = (val: string): number => {
+  const n = parseFloat(String(val).replace(/[^0-9.]/g, ''));
   return isNaN(n) ? 0 : n;
+};
+
+// ── Animation variants ────────────────────────────────────────────────────────
+
+const statsListVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+
+const statCardVariants = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring' as const, bounce: 0.3, duration: 0.5 } },
+};
+
+const chartVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring' as const, bounce: 0.2, duration: 0.5 } },
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+const StatCard = ({ emoji, value, label, valueColor, bgColor, borderColor }: StatConfig) => (
+  <motion.div
+    variants={statCardVariants}
+    className={`flex flex-col items-center justify-center gap-1 rounded-2xl border p-6 text-center ${bgColor} ${borderColor}`}
+  >
+    <span className="text-3xl leading-none select-none" aria-hidden="true">{emoji}</span>
+    <span className={`text-4xl font-extrabold tabular-nums leading-none mt-2 ${valueColor}`}>
+      {value}
+    </span>
+    <span className="text-sm text-gray font-medium mt-0.5">{label}</span>
+  </motion.div>
+);
+
+interface ChartCardProps {
+  title: string;
+  empty: boolean;
+  emptyMessage: string;
+  children: React.ReactNode;
 }
 
-export function Dashboard({ trips }: Props) {
-  const stats = useMemo(
-    () => ({
-      totalDays: trips.reduce(
-        (s, t) => s + tripDuration(t.start_date, t.end_date),
-        0,
-      ),
-      destinations: new Set(trips.map((t) => t.destination.toLowerCase())).size,
-      withItinerary: trips.filter((t) => t.description).length,
-    }),
-    [trips],
-  );
+const ChartCard = ({ title, empty, emptyMessage, children }: ChartCardProps) => (
+  <motion.div
+    variants={chartVariants}
+    className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6"
+  >
+    <h3 className="text-sm font-bold text-navy mb-4">{title}</h3>
+    {empty ? (
+      <div className="flex flex-col items-center justify-center h-48 text-gray text-sm gap-2">
+        <span className="text-3xl" aria-hidden="true">📊</span>
+        {emptyMessage}
+      </div>
+    ) : (
+      children
+    )}
+  </motion.div>
+);
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export function Dashboard({ trips }: DashboardProps) {
+  const stats = useMemo(() => ({
+    totalDays:     trips.reduce((s, t) => s + tripDuration(t.start_date, t.end_date), 0),
+    destinations:  new Set(trips.map((t) => t.destination.toLowerCase())).size,
+    withItinerary: trips.filter((t) => t.description).length,
+  }), [trips]);
 
   const durationData = useMemo(
-    () =>
-      trips.map((t) => ({
-        name: t.title.length > 14 ? t.title.slice(0, 14) + "---" : t.title,
-        days: tripDuration(t.start_date, t.end_date),
-      })),
+    () => trips.map((t) => ({
+      name: t.title.length > 14 ? `${t.title.slice(0, 14)}…` : t.title,
+      days: tripDuration(t.start_date, t.end_date),
+    })),
     [trips],
   );
 
@@ -63,85 +123,105 @@ export function Dashboard({ trips }: Props) {
       try {
         const itinerary = JSON.parse(trip.description);
         const bd = itinerary?.budget_breakdown;
-        if (bd && typeof bd == "object") {
+        if (bd && typeof bd === 'object') {
           for (const [key, val] of Object.entries(bd)) {
             totals[key] = (totals[key] ?? 0) + parseBudgetValue(String(val));
           }
         }
-      } catch {
-        // skip trips with invalid itinerary JSON
-      }
+      } catch { /* skip invalid JSON */ }
     }
     return Object.entries(totals).map(([name, value]) => ({ name, value }));
   }, [trips]);
 
+  const statCards: StatConfig[] = [
+    { emoji: '🌍', value: trips.length,       label: 'Total Trips',       valueColor: 'text-ocean',     bgColor: 'bg-ocean/5',   borderColor: 'border-ocean/15'  },
+    { emoji: '📅', value: stats.totalDays,    label: 'Days Traveling',    valueColor: 'text-coral',     bgColor: 'bg-coral/5',   borderColor: 'border-coral/15'  },
+    { emoji: '📍', value: stats.destinations, label: 'Destinations',      valueColor: 'text-sunny-dark', bgColor: 'bg-sunny/10', borderColor: 'border-sunny/30'  },
+    { emoji: '✅', value: stats.withItinerary,label: 'Saved Itineraries', valueColor: 'text-success',   bgColor: 'bg-success/5', borderColor: 'border-success/15'},
+  ];
+
+  // Empty state — no trips at all
+  if (trips.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <span className="text-6xl select-none" aria-hidden="true">🗺️</span>
+        <div>
+          <h3 className="text-lg font-bold text-navy">No data yet</h3>
+          <p className="text-sm text-gray mt-1">Create and plan trips to see your dashboard stats.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="dashboard">
-      <div className="dashboard-stats">
-        {[
-          { value: trips.length, label: "Total Trips" },
-          { value: stats.totalDays, label: "Days Traveling" },
-          { value: stats.destinations, label: "Destinations" },
-          { value: stats.withItinerary, label: "Saved Itineraries" },
-        ].map(({ value, label }) => (
-          <div key={label} className="stat-card">
-            <span className="stat-value">{value}</span>
-            <span className="stat-label">{label}</span>
-          </div>
+    <div className="space-y-6">
+
+      {/* ── Page title ── */}
+      <div>
+        <h2 className="text-2xl font-extrabold text-navy">Dashboard</h2>
+        <p className="text-sm text-gray mt-0.5">An overview of all your adventures.</p>
+      </div>
+
+      {/* ── Stat cards ── */}
+      <motion.div
+        className="grid grid-cols-4 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1"
+        variants={statsListVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {statCards.map((card) => (
+          <StatCard key={card.label} {...card} />
         ))}
-      </div>
+      </motion.div>
 
-      <div className="dashboard-charts">
-        <div className="chart-card">
-          <h3>Trip Duration (days)</h3>
-          {durationData.length === 0 ? (
-            <p className="chart-empty">No trips yet.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={durationData}
-                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="days" radius={[4, 4, 0, 0]}>
-                  {durationData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      {/* ── Charts ── */}
+      <motion.div
+        className="grid grid-cols-2 gap-4 max-md:grid-cols-1"
+        variants={statsListVariants}
+        initial="hidden"
+        animate="show"
+      >
+        <ChartCard
+          title="Trip Duration (days)"
+          empty={durationData.length === 0}
+          emptyMessage="No trips yet."
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={durationData} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'Poppins, sans-serif', fill: '#6B7280' }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fontFamily: 'Poppins, sans-serif', fill: '#6B7280' }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#F3F4F6' }} />
+              <Bar dataKey="days" radius={[6, 6, 0, 0]}>
+                {durationData.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-        <div className="chart-card">
-          <h3>Budget Breakdown ($)</h3>
-          {budgetData.length === 0 ? (
-            <p className="chart-empty">
-              Apply an itinerary to see budget data.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={budgetData}
-                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v) => `$${v}`} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {budgetData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
+        <ChartCard
+          title="Budget Breakdown ($)"
+          empty={budgetData.length === 0}
+          emptyMessage="Apply an itinerary to see budget data."
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={budgetData} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'Poppins, sans-serif', fill: '#6B7280' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fontFamily: 'Poppins, sans-serif', fill: '#6B7280' }} axisLine={false} tickLine={false} />
+              <Tooltip formatter={(v) => `$${v}`} contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#F3F4F6' }} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                {budgetData.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </motion.div>
+
     </div>
   );
 }

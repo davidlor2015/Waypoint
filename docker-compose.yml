@@ -1,16 +1,17 @@
 services:
   db:
-    image: mysql:8.0
+    image: postgres:15
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootsecret
-      MYSQL_DATABASE: travel_planner
-      MYSQL_USER: planner_user
-      MYSQL_PASSWORD: secret
+      POSTGRES_USER: planner_user
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: travel_planner
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "pg_isready -U planner_user -d travel_planner"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { getTrips, deleteTrip } from "../../../shared/api/trips";
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getTrips, deleteTrip } from '../../../shared/api/trips';
 import {
   planItinerary,
   planItinerarySmart,
@@ -7,9 +8,10 @@ import {
   AI_REQUEST_TIMEOUT_MS,
   AI_SLOW_THRESHOLD_MS,
   type Itinerary,
-} from "../../../shared/api/ai";
-import { ItineraryPanel } from "../ItineraryPanel";
-import "./TripList.css";
+} from '../../../shared/api/ai';
+import { ItineraryPanel } from '../ItineraryPanel';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Trip {
   id: number;
@@ -26,35 +28,45 @@ interface TripListProps {
   onCreateClick: () => void;
 }
 
-// ------------------------------------------------------------------
-// Loading skeleton (shown while the trip list is first fetched)
-// ------------------------------------------------------------------
+// ── Animation variants ────────────────────────────────────────────────────────
+
+const listVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08 } },
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 22 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { type: 'spring' as const, bounce: 0.28, duration: 0.52 },
+  },
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 const LoadingSkeleton = () => (
-  <div className="trip-list-shell container stack-lg">
-    <header className="trip-list-header row-between">
-      <div className="skeleton skeleton-title" />
-      <div className="skeleton skeleton-pill" />
-    </header>
-    <ul className="trip-list-items stack-md" aria-hidden="true">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <li key={index} className="trip-card ui-card ui-card--padded stack-md">
-          <div className="skeleton skeleton-title" />
-          <div className="skeleton skeleton-line" />
-          <div className="skeleton skeleton-line" />
-          <div className="actions-row">
-            <div className="skeleton skeleton-pill" />
-            <div className="skeleton skeleton-pill" />
-          </div>
-        </li>
-      ))}
-    </ul>
+  <div className="space-y-4">
+    {[1, 2, 3].map((i) => (
+      <div
+        key={i}
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 animate-pulse"
+      >
+        <div className="flex justify-between items-center mb-4">
+          <div className="h-5 bg-gray-200 rounded-full w-1/3" />
+          <div className="h-5 bg-gray-100 rounded-full w-20" />
+        </div>
+        <div className="h-4 bg-gray-100 rounded-full w-1/2 mb-2" />
+        <div className="h-4 bg-gray-100 rounded-full w-2/5 mb-5" />
+        <div className="flex gap-2">
+          <div className="h-9 bg-gray-200 rounded-full w-24" />
+          <div className="h-9 bg-gray-100 rounded-full w-28" />
+        </div>
+      </div>
+    ))}
   </div>
 );
-
-// ------------------------------------------------------------------
-// Generating indicator (shown inside a trip card during AI generation)
-// ------------------------------------------------------------------
 
 interface GeneratingIndicatorProps {
   elapsedSeconds: number;
@@ -63,50 +75,71 @@ interface GeneratingIndicatorProps {
 const GeneratingIndicator = ({ elapsedSeconds }: GeneratingIndicatorProps) => {
   const isSlow = elapsedSeconds * 1000 >= AI_SLOW_THRESHOLD_MS;
   return (
-    <div className="generating-indicator" aria-live="polite" aria-atomic="true">
-      <span className="generating-spinner" aria-hidden="true" />
-      <span className="generating-label">
-        Generating itinerary… {elapsedSeconds > 0 && `(${elapsedSeconds}s)`}
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-ocean/5 border border-ocean/20 rounded-xl">
+      <div className="w-5 h-5 rounded-full border-2 border-ocean border-t-transparent animate-spin flex-shrink-0" />
+      <span className="text-sm font-medium text-ocean tabular-nums">
+        Generating itinerary{elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : '…'}
       </span>
       {isSlow && (
-        <p className="generating-slow-hint">
-          The AI is still working — LLM responses can take 1–2 minutes on CPU.
-          Please keep this tab open.
+        <p className="w-full m-0 text-sm text-gray italic">
+          Still working — LLM responses can take 1–2 minutes on CPU. Keep this tab open.
         </p>
       )}
     </div>
   );
 };
 
-// ------------------------------------------------------------------
-// Main component
-// ------------------------------------------------------------------
+interface PillButtonProps {
+  onClick: () => void;
+  disabled?: boolean;
+  variant: 'ocean' | 'coral' | 'ghost' | 'danger';
+  busy?: boolean;
+  children: React.ReactNode;
+}
+
+const PillButton = ({ onClick, disabled, variant, busy, children }: PillButtonProps) => {
+  const base =
+    'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+
+  const variants = {
+    ocean:  'bg-ocean text-white hover:bg-ocean-dark shadow-sm shadow-ocean/25',
+    coral:  'bg-coral text-white hover:bg-coral-dark shadow-sm shadow-coral/25',
+    ghost:  'bg-silver text-navy hover:bg-gray-200',
+    danger: 'bg-coral/10 text-coral border border-coral/25 hover:bg-coral/20',
+  };
+
+  return (
+    <motion.button
+      onClick={onClick}
+      disabled={disabled}
+      aria-busy={busy}
+      whileHover={!disabled ? { scale: 1.04 } : undefined}
+      whileTap={!disabled ? { scale: 0.96 } : undefined}
+      className={`${base} ${variants[variant]}`}
+    >
+      {children}
+    </motion.button>
+  );
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export const TripList = ({ token, onCreateClick }: TripListProps) => {
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [trips, setTrips]               = useState<Trip[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [actionError, setActionError]   = useState<string | null>(null);
 
-  const [pendingItineraries, setPendingItineraries] = useState<
-    Record<number, Itinerary>
-  >({});
-
-  // Sets tracking which trips are in a given async state
-  const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
+  const [pendingItineraries, setPendingItineraries] = useState<Record<number, Itinerary>>({});
+  const [generatingIds, setGeneratingIds]           = useState<Set<number>>(new Set());
   const [generatingSmartIds, setGeneratingSmartIds] = useState<Set<number>>(new Set());
-  const [applyingIds, setApplyingIds] = useState<Set<number>>(new Set());
-  const [viewingIds, setViewingIds] = useState<Set<number>>(new Set());
+  const [applyingIds, setApplyingIds]               = useState<Set<number>>(new Set());
+  const [viewingIds, setViewingIds]                 = useState<Set<number>>(new Set());
+  const [generatingElapsed, setGeneratingElapsed]   = useState<Record<number, number>>({});
 
-  // Per-trip elapsed seconds counter (drives the generating indicator display)
-  const [generatingElapsed, setGeneratingElapsed] = useState<Record<number, number>>({});
-
-  // Mutable refs for timer IDs — using ref avoids stale-closure issues in callbacks
   const timerRefs = useRef<Record<number, ReturnType<typeof setInterval>>>({});
 
-  // ------------------------------------------------------------------
-  // Timer helpers
-  // ------------------------------------------------------------------
+  // ── Timer helpers ──────────────────────────────────────────────────────────
 
   const startTimer = (tripId: number) => {
     setGeneratingElapsed((prev) => ({ ...prev, [tripId]: 0 }));
@@ -128,29 +161,18 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     });
   };
 
-  // Cleanup all timers when the component unmounts
-  useEffect(() => {
-    return () => {
-      Object.values(timerRefs.current).forEach(clearInterval);
-    };
-  }, []);
+  useEffect(() => () => { Object.values(timerRefs.current).forEach(clearInterval); }, []);
 
-  // ------------------------------------------------------------------
-  // Data helpers
-  // ------------------------------------------------------------------
+  // ── Data helpers ───────────────────────────────────────────────────────────
 
   const parseItinerary = (description: string): Itinerary | null => {
     try {
       return JSON.parse(description);
     } catch {
-      const marker = "DETAILS (JSON): ";
+      const marker = 'DETAILS (JSON): ';
       const idx = description.indexOf(marker);
       if (idx !== -1) {
-        try {
-          return JSON.parse(description.slice(idx + marker.length));
-        } catch {
-          return null;
-        }
+        try { return JSON.parse(description.slice(idx + marker.length)); } catch { return null; }
       }
       return null;
     }
@@ -159,18 +181,12 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const toggleView = (tripId: number) => {
     setViewingIds((prev) => {
       const next = new Set(prev);
-      if (next.has(tripId)) {
-        next.delete(tripId);
-      } else {
-        next.add(tripId);
-      }
+      if (next.has(tripId)) { next.delete(tripId); } else { next.add(tripId); }
       return next;
     });
   };
 
-  // ------------------------------------------------------------------
-  // Initial fetch
-  // ------------------------------------------------------------------
+  // ── Initial fetch ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     const fetchData = async () => {
@@ -180,43 +196,27 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
         const data = await getTrips(token);
         setTrips(data);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "An unknown error occurred",
-        );
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [token]);
 
-  // ------------------------------------------------------------------
-  // Actions
-  // ------------------------------------------------------------------
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this trip?")) return;
+    if (!window.confirm('Are you sure you want to delete this trip?')) return;
     setActionError(null);
     try {
       await deleteTrip(token, id);
       setTrips((prev) => prev.filter((t) => t.id !== id));
     } catch {
-      setActionError("Failed to delete trip. Please try again.");
+      setActionError('Failed to delete trip. Please try again.');
     }
   };
 
-  /**
-   * Shared generator — used by both "AI Plan" and "Smart Plan" buttons.
-   *
-   * Attaches an AbortController (hard timeout = AI_REQUEST_TIMEOUT_MS) so
-   * the browser never hangs indefinitely waiting for a slow LLM response.
-   * The elapsed timer provides real-time feedback in the UI.
-   *
-   * SSE groundwork: when the backend exposes a streaming endpoint, replace
-   * the `generate` fetch call here with `new EventSource(url)` and push
-   * partial tokens into state as they arrive.
-   */
   const runGeneration = async (
     tripId: number,
     generate: (signal: AbortSignal) => Promise<Itinerary>,
@@ -227,24 +227,16 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     startTimer(tripId);
 
     const controller = new AbortController();
-    const hardTimeout = window.setTimeout(
-      () => controller.abort(),
-      AI_REQUEST_TIMEOUT_MS,
-    );
+    const hardTimeout = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
     try {
       const itinerary = await generate(controller.signal);
       setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setActionError(
-          "The AI is taking too long and the request was cancelled. " +
-          "Please try again — shorter trips generate faster.",
-        );
+      if (err instanceof Error && err.name === 'AbortError') {
+        setActionError('The AI took too long and the request was cancelled. Try again — shorter trips generate faster.');
       } else {
-        setActionError(
-          err instanceof Error ? err.message : "Failed to generate itinerary.",
-        );
+        setActionError(err instanceof Error ? err.message : 'Failed to generate itinerary.');
       }
     } finally {
       window.clearTimeout(hardTimeout);
@@ -261,8 +253,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     const trip = trips.find((t) => t.id === tripId);
     return runGeneration(
       tripId,
-      (signal) =>
-        planItinerary(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
+      (signal) => planItinerary(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
       setGeneratingIds,
     );
   };
@@ -271,8 +262,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     const trip = trips.find((t) => t.id === tripId);
     return runGeneration(
       tripId,
-      (signal) =>
-        planItinerarySmart(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
+      (signal) => planItinerarySmart(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
       setGeneratingSmartIds,
     );
   };
@@ -283,7 +273,6 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
 
     setActionError(null);
     setApplyingIds((prev) => new Set(prev).add(tripId));
-
     try {
       await applyItinerary(token, tripId, itinerary);
       const freshTrips = await getTrips(token);
@@ -294,9 +283,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
         return next;
       });
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to apply itinerary.",
-      );
+      setActionError(err instanceof Error ? err.message : 'Failed to apply itinerary.');
     } finally {
       setApplyingIds((prev) => {
         const next = new Set(prev);
@@ -306,25 +293,24 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     }
   };
 
-  // ------------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------------
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) return <LoadingSkeleton />;
 
   if (error) {
     return (
-      <div className="trip-list-shell container stack-lg">
-        <header className="trip-list-header row-between">
-          <h2 className="section-title">My Trips</h2>
-          <button
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-extrabold text-navy">My Trips</h2>
+          <motion.button
+            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
             onClick={onCreateClick}
-            className="btn btn-primary trip-list-create-btn"
+            className="px-5 py-2.5 rounded-full bg-ocean text-white text-sm font-bold shadow-sm shadow-ocean/25 cursor-pointer"
           >
-            + Create New Trip
-          </button>
-        </header>
-        <div className="status status-error" role="alert">
+            + New Trip
+          </motion.button>
+        </div>
+        <div className="px-4 py-3 rounded-xl bg-coral/10 border border-coral/25 text-coral text-sm" role="alert">
           {error}
         </div>
       </div>
@@ -332,86 +318,107 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   }
 
   return (
-    <div className="trip-list-shell container stack-lg">
-      <header className="trip-list-header row-between">
-        <div className="stack-xs">
-          <h2 className="section-title">My Trips</h2>
-          <p className="section-subtitle">
-            Plan, generate, and save itineraries in one place.
-          </p>
+    <div className="space-y-6">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-extrabold text-navy">My Trips</h2>
+          <p className="text-sm text-gray mt-0.5">Plan, generate, and save itineraries in one place.</p>
         </div>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
           onClick={onCreateClick}
-          className="btn btn-primary trip-list-create-btn"
+          className="px-5 py-2.5 rounded-full bg-ocean text-white text-sm font-bold shadow-sm shadow-ocean/25 cursor-pointer flex-shrink-0"
         >
-          + Create New Trip
-        </button>
-      </header>
+          + New Trip
+        </motion.button>
+      </div>
 
-      {actionError && (
-        <div className="status status-error" role="alert">
-          {actionError}
-        </div>
-      )}
+      {/* ── Action error banner ── */}
+      <AnimatePresence>
+        {actionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="px-4 py-3 rounded-xl bg-coral/10 border border-coral/25 text-coral text-sm font-medium"
+            role="alert"
+          >
+            {actionError}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      {/* ── Empty state ── */}
       {trips.length === 0 ? (
-        <section className="empty-state stack-md" aria-live="polite">
-          <h3 className="trip-empty-title">No trips yet</h3>
-          <p className="status-muted">
-            Create your first trip to start planning your itinerary.
-          </p>
+        <div className="flex flex-col items-center justify-center gap-4 py-20 border-2 border-dashed border-gray-200 rounded-2xl text-center">
+          <span className="text-6xl select-none" aria-hidden="true">🗺️</span>
           <div>
-            <button onClick={onCreateClick} className="btn btn-primary">
-              + Create New Trip
-            </button>
+            <h3 className="text-lg font-bold text-navy">No trips yet</h3>
+            <p className="text-sm text-gray mt-1">Create your first trip to start planning.</p>
           </div>
-        </section>
+          <motion.button
+            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+            onClick={onCreateClick}
+            className="px-6 py-2.5 rounded-full bg-ocean text-white text-sm font-bold shadow-sm shadow-ocean/25 cursor-pointer"
+          >
+            + Create your first trip
+          </motion.button>
+        </div>
       ) : (
-        <ul className="trip-list-items stack-md">
+        /* ── Trip card list ── */
+        <motion.ul
+          className="space-y-4 list-none p-0 m-0"
+          variants={listVariants}
+          initial="hidden"
+          animate="show"
+        >
           {trips.map((trip) => {
-            const isGenerating = generatingIds.has(trip.id);
+            const isGenerating      = generatingIds.has(trip.id);
             const isGeneratingSmart = generatingSmartIds.has(trip.id);
-            const isAnyGenerating = isGenerating || isGeneratingSmart;
-            const isApplying = applyingIds.has(trip.id);
-            const isViewing = viewingIds.has(trip.id);
-            const pendingItinerary = pendingItineraries[trip.id];
+            const isAnyGenerating   = isGenerating || isGeneratingSmart;
+            const isApplying        = applyingIds.has(trip.id);
+            const isViewing         = viewingIds.has(trip.id);
+            const pendingItinerary  = pendingItineraries[trip.id];
             const hasSavedItinerary = !!trip.description;
-            const savedItinerary = hasSavedItinerary
-              ? parseItinerary(trip.description!)
-              : null;
-            const elapsed = generatingElapsed[trip.id] ?? 0;
+            const savedItinerary    = hasSavedItinerary ? parseItinerary(trip.description!) : null;
+            const elapsed           = generatingElapsed[trip.id] ?? 0;
+
+            const startDate = new Date(trip.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const endDate   = new Date(trip.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
             return (
-              <li
+              <motion.li
                 key={trip.id}
-                className="trip-card ui-card ui-card--padded stack-md"
+                variants={cardVariants}
+                layout
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200 p-6 space-y-4"
               >
-                <div className="trip-title-row">
-                  <h3 className="trip-title">{trip.title}</h3>
+                {/* Title row */}
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h3 className="text-lg font-extrabold text-navy leading-tight">{trip.title}</h3>
                   {hasSavedItinerary && (
-                    <span className="badge badge-success">Itinerary saved</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sunny/30 text-sunny-dark text-xs font-bold">
+                      ✓ Itinerary saved
+                    </span>
                   )}
                 </div>
 
-                <dl className="trip-meta">
-                  <div className="trip-meta-row">
-                    <dt>Destination</dt>
-                    <dd>{trip.destination}</dd>
-                  </div>
-                  <div className="trip-meta-row">
-                    <dt>Dates</dt>
-                    <dd>
-                      {new Date(trip.start_date).toLocaleDateString()} –{" "}
-                      {new Date(trip.end_date).toLocaleDateString()}
-                    </dd>
-                  </div>
-                </dl>
+                {/* Meta */}
+                <div className="flex flex-col gap-1.5 text-sm">
+                  <span className="flex items-center gap-1.5 text-gray">
+                    <span aria-hidden="true">📍</span>
+                    <span className="font-medium text-navy">{trip.destination}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-gray">
+                    <span aria-hidden="true">📅</span>
+                    {startDate} – {endDate}
+                  </span>
+                </div>
 
-                {/* Show generating indicator inside the card while working */}
-                {isAnyGenerating && (
-                  <GeneratingIndicator elapsedSeconds={elapsed} />
-                )}
+                {/* Generating indicator */}
+                {isAnyGenerating && <GeneratingIndicator elapsedSeconds={elapsed} />}
 
+                {/* Pending itinerary preview */}
                 {pendingItinerary ? (
                   <ItineraryPanel
                     itinerary={pendingItinerary}
@@ -423,47 +430,43 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                     {isViewing && savedItinerary && (
                       <ItineraryPanel itinerary={savedItinerary} />
                     )}
-                    <div className="actions-row">
-                      <button
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <PillButton
+                        variant="ocean"
                         onClick={() => handleGenerate(trip.id)}
                         disabled={isAnyGenerating}
-                        className="btn btn-primary"
-                        aria-busy={isGenerating}
+                        busy={isGenerating}
                       >
-                        {isGenerating ? "Working…" : "AI Plan"}
-                      </button>
+                        {isGenerating ? 'Working…' : '✨ AI Plan'}
+                      </PillButton>
 
-                      <button
+                      <PillButton
+                        variant="coral"
                         onClick={() => handleGenerateSmart(trip.id)}
                         disabled={isAnyGenerating}
-                        className="btn btn-secondary"
-                        aria-busy={isGeneratingSmart}
+                        busy={isGeneratingSmart}
                       >
-                        {isGeneratingSmart ? "Working…" : "Smart Plan"}
-                      </button>
+                        {isGeneratingSmart ? 'Working…' : '🧠 Smart Plan'}
+                      </PillButton>
 
                       {savedItinerary && (
-                        <button
-                          onClick={() => toggleView(trip.id)}
-                          className="btn btn-secondary"
-                        >
-                          {isViewing ? "Hide Itinerary" : "View Itinerary"}
-                        </button>
+                        <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
+                          {isViewing ? '🙈 Hide' : '👁 View Itinerary'}
+                        </PillButton>
                       )}
 
-                      <button
-                        onClick={() => handleDelete(trip.id)}
-                        className="btn btn-danger"
-                      >
-                        Delete Trip
-                      </button>
+                      <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
+                        🗑 Delete
+                      </PillButton>
                     </div>
                   </>
                 )}
-              </li>
+              </motion.li>
             );
           })}
-        </ul>
+        </motion.ul>
       )}
     </div>
   );
