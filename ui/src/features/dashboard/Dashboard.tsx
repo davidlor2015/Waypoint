@@ -5,6 +5,7 @@ import {
   Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import type { Trip } from '../../shared/api/trips';
+import { DestinationsMap } from './DestinationsMap';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -220,6 +221,17 @@ export function Dashboard({ trips }: DashboardProps) {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
+      </motion.div>
+
+      {/* ── Destinations map ── */}
+      <motion.div
+        variants={chartVariants}
+        initial="hidden"
+        animate="show"
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6"
+      >
+        <h3 className="text-sm font-bold text-navy mb-4">Destinations</h3>
+        <DestinationsMap trips={trips} />
       </motion.div>
 
     </div>

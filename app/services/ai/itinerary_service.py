@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import AsyncGenerator, Optional
 from sqlalchemy.orm import Session
 
 from app.models.trip import Trip
@@ -104,6 +105,46 @@ Limit to 3 days max, 3 activities per day. Return JSON only."""
         if not trip:
             raise ValueError("Trip not found or access denied.")
         return await generate_rule_based_itinerary(trip, interests_override, budget_override)
+
+    async def stream_itinerary(
+        self,
+        trip_id: int,
+        user_id: int,
+        interests_override: Optional[str] = None,
+        budget_override: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Yields Server-Sent Events for the client:
+          - 'token' events carry raw LLM text chunks for live display.
+          - 'complete' event carries the final validated ItineraryResponse JSON.
+          - 'error' event carries a human-readable message on failure.
+        """
+        trip = self.trip_repo.get_by_id_and_user(trip_id, user_id)
+        if not trip:
+            yield f"event: error\ndata: {json.dumps({'message': 'Trip not found or access denied.'})}\n\n"
+            return
+
+        sys_prompt = self._build_system_prompt()
+        user_prompt = self._build_user_prompt(trip, interests_override, budget_override)
+
+        full_text = ""
+        try:
+            async for token in self.llm_client.stream_json(sys_prompt, user_prompt):
+                full_text += token
+                yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
+        except Exception as e:
+            logger.error(f"Streaming LLM error: {e}")
+            yield f"event: error\ndata: {json.dumps({'message': 'LLM connection failed. Is Ollama running?'})}\n\n"
+            return
+
+        try:
+            clean_json = self._clean_json_string(full_text)
+            parsed = json.loads(clean_json)
+            itinerary = ItineraryResponse(**parsed)
+            yield f"event: complete\ndata: {itinerary.model_dump_json()}\n\n"
+        except Exception:
+            logger.error(f"Failed to parse streamed LLM response: {full_text}")
+            yield f"event: error\ndata: {json.dumps({'message': 'AI generated invalid data. Please try again.'})}\n\n"
 
     def apply_itinerary_to_db(self, trip_id: int, user_id: int,
                               itinerary: ItineraryResponse) -> Trip:

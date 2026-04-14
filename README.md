@@ -60,6 +60,8 @@ Travel Planner lets users:
 | zod                 | 4.x     | Client-side schema validation                   |
 | react-hook-form     | 7.x     | Form state management with resolvers            |
 | @hookform/resolvers | 5.x     | Bridges react-hook-form with zod                |
+| react-leaflet       | 4.x     | React bindings for Leaflet interactive maps     |
+| leaflet             | 1.x     | Map rendering engine (OpenStreetMap tiles)      |
 | ESLint              | 9.39.1  | Code linting                                    |
 
 ### Infrastructure
@@ -168,18 +170,25 @@ travel-planner/
         |   +-- auth/
         |   |   +-- LoginPage/        # Card entrance animation, register/login toggle
         |   +-- dashboard/
-        |   |   +-- Dashboard.tsx     # Stat cards (staggered), dual bar charts
+        |   |   +-- Dashboard.tsx     # Stat cards (staggered), dual bar charts, destinations map
+        |   |   +-- DestinationsMap.tsx # react-leaflet map with geocoded trip pins
         |   +-- trips/
-        |       +-- TripList/         # Staggered card list, abort controller, elapsed timer
+        |       +-- TripList/         # Staggered card list, SSE streaming display
         |       +-- CreateTripForm/   # react-hook-form + zod, animated field errors
+        |       +-- EditTripModal/    # Prefilled edit form in an animated modal overlay
         |       +-- ItineraryPanel/   # Day/event breakdown, apply button
         |       +-- schemas/
         |           +-- tripSchema.ts # Zod schema mirroring TripCreate Pydantic model
         +-- shared/
             +-- api/
-                +-- auth.ts
-                +-- trips.ts
-                +-- ai.ts             # AbortSignal support, timeout constants
+            |   +-- auth.ts
+            |   +-- trips.ts          # getTrips, createTrip, updateTrip, deleteTrip
+            |   +-- ai.ts             # planItinerarySmart, applyItinerary, timeout constants
+            +-- hooks/
+            |   +-- useGeocode.ts     # Nominatim geocoding with module-level session cache
+            |   +-- useStreamingItinerary.ts # SSE fetch stream reader, per-trip state management
+            +-- ui/
+                +-- FormField.tsx     # Shared label + animated error wrapper, inputCls helper
 ```
 
 ## Backend Design
@@ -242,6 +251,14 @@ The visual theme is built around three brand colours, bold Poppins typography, a
 
 Framer Motion handles all transitions. Spring-based animations (`type: 'spring', bounce: 0.28`) are used consistently across card entrances, tab indicators, and button interactions so the UI feels responsive and energetic rather than mechanical.
 
+### Shared Primitives
+
+To enforce DRY across feature components, reusable UI elements live in `shared/`:
+
+* `shared/ui/FormField.tsx` — label, animated error message, and `inputCls` helper used by every form in the app. Adding a third form means importing, not copying.
+* `shared/hooks/useGeocode.ts` — geocodes destination strings via Nominatim. Results are stored in a module-level `Map` so the same city is never fetched twice within a session, and requests are spaced 1.1 s apart to respect Nominatim's rate limit.
+* `shared/hooks/useStreamingItinerary.ts` — manages one SSE fetch stream per trip. Parses `token`, `complete`, and `error` events from the server, accumulates raw text for live display, and exposes `start()` / `reset()` per trip ID.
+
 ### AppShell
 
 `AppShell` (`src/app/AppShell/`) is the persistent layout wrapper rendered for all authenticated views. It contains:
@@ -257,15 +274,17 @@ The frontend is organized by feature. Each feature owns its components, styles, 
 ```
 features/
   auth/
-    LoginPage/         entrance animation, register/login toggle with AnimatePresence
+    LoginPage/           entrance animation, register/login toggle with AnimatePresence
   dashboard/
-    Dashboard.tsx      stat cards with staggered entrance, dual Recharts bar charts
+    Dashboard.tsx        stat cards with staggered entrance, dual Recharts bar charts
+    DestinationsMap.tsx  Leaflet map with one pin per unique destination, OSM tiles
   trips/
-    TripList/          staggered card list, abort controller, elapsed timer indicator
-    CreateTripForm/    react-hook-form + zod, animated per-field error messages
-    ItineraryPanel/    day and event breakdown, apply button
+    TripList/            staggered card list, SSE streaming display, edit modal trigger
+    CreateTripForm/      react-hook-form + zod, animated per-field error messages
+    EditTripModal/       animated modal overlay with prefilled form, PUT /v1/trips/{id}
+    ItineraryPanel/      day and event breakdown, apply button
     schemas/
-      tripSchema.ts    Zod schema mirroring backend TripCreate
+      tripSchema.ts      Zod schema mirroring backend TripCreate
 ```
 
 ### Form Validation
@@ -279,22 +298,31 @@ features/
 
 Validation errors appear inline below each field with an `AnimatePresence` slide-in animation. The `noValidate` attribute disables browser-native validation so Zod is the single source of truth.
 
-### AI Loading State
+### AI Generation — Streaming (AI Plan)
 
-Long-running AI requests (Ollama on CPU can take 60 to 120 seconds) are handled with three mechanisms:
+The primary "AI Plan" flow uses Server-Sent Events so tokens appear on screen as the LLM produces them, rather than after a silent 60–120 second wait.
 
-1. **AbortController timeout** — every `planItinerary` and `planItinerarySmart` call receives an `AbortSignal` tied to a 3-minute hard timeout. If the server does not respond in time, the request is cancelled and a clear message is shown.
-2. **Elapsed timer** — a `setInterval` stored in `useRef` (to avoid stale closures) increments a per-trip counter every second. The count is displayed inside the trip card while generating.
-3. **Slow hint** — after 30 seconds (`AI_SLOW_THRESHOLD_MS`) a note appears explaining that CPU-based LLM responses can take 1 to 2 minutes.
+1. The frontend calls `GET /v1/ai/stream/{trip_id}` with an `Authorization: Bearer` header via `fetch()` (not `EventSource`, which does not support custom headers).
+2. `useStreamingItinerary` reads the `ReadableStream` body chunk by chunk, assembles SSE messages across chunk boundaries, and dispatches on event type:
+   * `token` — appends the raw text to per-trip state; rendered live in a monospace scrollable box inside the trip card.
+   * `complete` — sets the validated `Itinerary` object; the card transitions to the preview/apply view.
+   * `error` — displays a per-card error banner.
+3. A Cancel button aborts the in-flight fetch via `AbortController`.
+
+### AI Generation — Non-Streaming (Smart Plan)
+
+The rule-based "Smart Plan" uses a standard `POST` request with a 3-minute `AbortController` hard timeout. A spinner is shown inside the card while waiting. On completion the result goes through the same preview/apply flow as the streaming path.
 
 ### API Layer Separation
 
-All `fetch` calls are isolated in `shared/api/`. React components never call `fetch` directly. They call typed functions that return typed data:
+All `fetch` calls are isolated in `shared/api/` or `shared/hooks/`. React components never call `fetch` directly.
 
 ```
-shared/api/auth.ts    -> login(), register()
-shared/api/trips.ts   -> getTrips(), createTrip(), deleteTrip()
-shared/api/ai.ts      -> planItinerary(), planItinerarySmart(), applyItinerary()
+shared/api/auth.ts                -> login(), register()
+shared/api/trips.ts               -> getTrips(), createTrip(), updateTrip(), deleteTrip()
+shared/api/ai.ts                  -> planItinerarySmart(), applyItinerary()
+shared/hooks/useStreamingItinerary -> manages SSE fetch stream for AI Plan
+shared/hooks/useGeocode           -> geocodes destination strings for the map
 ```
 
 ## AI Integration
@@ -338,11 +366,28 @@ Generates itineraries from real POI data without an LLM. Entirely free, no credi
 
 If no POIs match the requested interest categories, the service automatically retries with the broadest category (`interesting_places`).
 
+### Strategy 3 — Streaming LLM (SSE)
+
+`GET /v1/ai/stream/{trip_id}` runs the same LLM pipeline as Strategy 1 but streams output token by token using FastAPI's `StreamingResponse` with `media_type="text/event-stream"`.
+
+```
+1. Fetch trip from DB            -> verify ownership
+2. Build prompts                 -> same as Strategy 1
+3. Call Ollama (stream=True)     -> OllamaClient.stream_json() reads NDJSON line by line
+4. Yield token SSE events        -> one event per non-empty content chunk
+5. Assemble full text            -> concatenate all tokens
+6. Validate with Pydantic        -> ItineraryResponse(**parsed_dict)
+7. Yield complete SSE event      -> validated JSON payload
+```
+
+If Ollama raises an error or the JSON is invalid, an `error` SSE event is yielded and the generator returns cleanly. `X-Accel-Buffering: no` is set on the response so nginx proxies do not buffer the stream.
+
 ### Two-Step Save Flow
 
 Generation and saving are intentionally separate:
 
-* `POST /v1/ai/plan` — LLM generation, preview only
+* `GET /v1/ai/stream/{trip_id}` — LLM streaming generation, preview only
+* `POST /v1/ai/plan` — LLM generation (non-streaming), preview only
 * `POST /v1/ai/plan-smart` — Rule-based generation, preview only
 * `POST /v1/ai/apply` — Save any approved itinerary to the trip record
 
@@ -480,7 +525,7 @@ An `autouse` fixture calls `limiter._storage.reset()` before and after every tes
 
 ### Single Responsibility
 
-Each file and class has one job. Routes handle HTTP. Services handle business logic. Repositories handle database access. Schemas handle validation. The Ollama client does one thing: make HTTP calls to Ollama. On the frontend, sub-components like `StatCard`, `FormField`, `PillButton`, and `GeneratingIndicator` each handle one concern.
+Each file and class has one job. Routes handle HTTP. Services handle business logic. Repositories handle database access. Schemas handle validation. `OllamaClient` does one thing: make HTTP calls to Ollama (`generate_json` for batch, `stream_json` for SSE). On the frontend, sub-components like `StatCard`, `FormField`, `PillButton`, and `StreamingDisplay` each handle one concern. Shared hooks (`useGeocode`, `useStreamingItinerary`) own data-fetching logic so components stay pure renderers.
 
 ### Separation of Concerns
 
@@ -590,11 +635,20 @@ Full interactive documentation at `http://localhost:8000/docs` when the backend 
 
 ### AI
 
-| Method | Endpoint            | Auth | Rate Limited | Description                                                |
-| ------ | ------------------- | ---- | ------------ | ---------------------------------------------------------- |
-| POST   | `/v1/ai/plan`       | JWT  | Yes          | Generate an itinerary via LLM (preview only)               |
-| POST   | `/v1/ai/plan-smart` | JWT  | Yes          | Generate an itinerary via rule-based engine (preview only) |
-| POST   | `/v1/ai/apply`      | JWT  | No           | Save any generated itinerary to a trip                     |
+| Method | Endpoint                    | Auth | Rate Limited | Description                                                      |
+| ------ | --------------------------- | ---- | ------------ | ---------------------------------------------------------------- |
+| GET    | `/v1/ai/stream/{trip_id}`   | JWT  | No           | Stream an itinerary via LLM as SSE (token / complete / error)    |
+| POST   | `/v1/ai/plan`               | JWT  | Yes          | Generate an itinerary via LLM (preview only, non-streaming)      |
+| POST   | `/v1/ai/plan-smart`         | JWT  | Yes          | Generate an itinerary via rule-based engine (preview only)       |
+| POST   | `/v1/ai/apply`              | JWT  | No           | Save any generated itinerary to a trip                           |
+
+**SSE event types** returned by `/v1/ai/stream/{trip_id}`:
+
+| Event      | Data shape                  | Meaning                                     |
+| ---------- | --------------------------- | ------------------------------------------- |
+| `token`    | `{"token": "..."}`          | One raw LLM text chunk                      |
+| `complete` | Full `ItineraryResponse` JSON | Generation done; validated itinerary ready |
+| `error`    | `{"message": "..."}`        | Generation failed; human-readable reason    |
 
 Both plan endpoints accept the same request body:
 

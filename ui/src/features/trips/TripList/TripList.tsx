@@ -1,27 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTrips, deleteTrip } from '../../../shared/api/trips';
+import { getTrips, deleteTrip, type Trip } from '../../../shared/api/trips';
 import {
-  planItinerary,
   planItinerarySmart,
   applyItinerary,
   AI_REQUEST_TIMEOUT_MS,
-  AI_SLOW_THRESHOLD_MS,
   type Itinerary,
 } from '../../../shared/api/ai';
 import { ItineraryPanel } from '../ItineraryPanel';
+import { EditTripModal } from '../EditTripModal';
+import { useStreamingItinerary } from '../../../shared/hooks/useStreamingItinerary';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Trip {
-  id: number;
-  title: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  description: string | null;
-  notes: string | null;
-}
 
 interface TripListProps {
   token: string;
@@ -68,22 +58,46 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-interface GeneratingIndicatorProps {
-  elapsedSeconds: number;
+interface StreamingDisplayProps {
+  text: string;
+  onCancel: () => void;
 }
 
-const GeneratingIndicator = ({ elapsedSeconds }: GeneratingIndicatorProps) => {
-  const isSlow = elapsedSeconds * 1000 >= AI_SLOW_THRESHOLD_MS;
+const StreamingDisplay = ({ text, onCancel }: StreamingDisplayProps) => {
+  const scrollRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [text]);
+
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-ocean/5 border border-ocean/20 rounded-xl">
-      <div className="w-5 h-5 rounded-full border-2 border-ocean border-t-transparent animate-spin flex-shrink-0" />
-      <span className="text-sm font-medium text-ocean tabular-nums">
-        Generating itinerary{elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : '…'}
-      </span>
-      {isSlow && (
-        <p className="w-full m-0 text-sm text-gray italic">
-          Still working — LLM responses can take 1–2 minutes on CPU. Keep this tab open.
-        </p>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 text-sm font-medium text-ocean">
+          <div className="w-4 h-4 rounded-full border-2 border-ocean border-t-transparent animate-spin flex-shrink-0" />
+          Generating itinerary...
+          {text.length > 0 && (
+            <span className="text-gray font-normal tabular-nums">
+              {text.length} chars
+            </span>
+          )}
+        </div>
+        <button
+          onClick={onCancel}
+          className="text-xs font-semibold text-gray hover:text-navy transition-colors cursor-pointer"
+        >
+          Cancel
+        </button>
+      </div>
+      {text.length > 0 && (
+        <pre
+          ref={scrollRef}
+          className="text-xs font-mono text-gray bg-silver rounded-xl p-3 max-h-28 overflow-y-auto whitespace-pre-wrap break-all leading-relaxed"
+        >
+          {text}
+        </pre>
       )}
     </div>
   );
@@ -125,43 +139,18 @@ const PillButton = ({ onClick, disabled, variant, busy, children }: PillButtonPr
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const TripList = ({ token, onCreateClick }: TripListProps) => {
-  const [trips, setTrips]               = useState<Trip[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState<string | null>(null);
-  const [actionError, setActionError]   = useState<string | null>(null);
+  const [trips, setTrips]             = useState<Trip[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [pendingItineraries, setPendingItineraries] = useState<Record<number, Itinerary>>({});
-  const [generatingIds, setGeneratingIds]           = useState<Set<number>>(new Set());
   const [generatingSmartIds, setGeneratingSmartIds] = useState<Set<number>>(new Set());
   const [applyingIds, setApplyingIds]               = useState<Set<number>>(new Set());
   const [viewingIds, setViewingIds]                 = useState<Set<number>>(new Set());
-  const [generatingElapsed, setGeneratingElapsed]   = useState<Record<number, number>>({});
+  const [editingTrip, setEditingTrip]               = useState<Trip | null>(null);
 
-  const timerRefs = useRef<Record<number, ReturnType<typeof setInterval>>>({});
-
-  // ── Timer helpers ──────────────────────────────────────────────────────────
-
-  const startTimer = (tripId: number) => {
-    setGeneratingElapsed((prev) => ({ ...prev, [tripId]: 0 }));
-    timerRefs.current[tripId] = setInterval(() => {
-      setGeneratingElapsed((prev) => ({
-        ...prev,
-        [tripId]: (prev[tripId] ?? 0) + 1,
-      }));
-    }, 1000);
-  };
-
-  const stopTimer = (tripId: number) => {
-    clearInterval(timerRefs.current[tripId]);
-    delete timerRefs.current[tripId];
-    setGeneratingElapsed((prev) => {
-      const next = { ...prev };
-      delete next[tripId];
-      return next;
-    });
-  };
-
-  useEffect(() => () => { Object.values(timerRefs.current).forEach(clearInterval); }, []);
+  const { streams, start: startStream, reset: resetStream } = useStreamingItinerary(token);
 
   // ── Data helpers ───────────────────────────────────────────────────────────
 
@@ -217,31 +206,31 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     }
   };
 
-  const runGeneration = async (
-    tripId: number,
-    generate: (signal: AbortSignal) => Promise<Itinerary>,
-    trackingSet: React.Dispatch<React.SetStateAction<Set<number>>>,
-  ) => {
+  const handleGenerateSmart = async (tripId: number) => {
+    const trip = trips.find((t) => t.id === tripId);
     setActionError(null);
-    trackingSet((prev) => new Set(prev).add(tripId));
-    startTimer(tripId);
+    setGeneratingSmartIds((prev) => new Set(prev).add(tripId));
 
     const controller = new AbortController();
     const hardTimeout = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
     try {
-      const itinerary = await generate(controller.signal);
+      const itinerary = await planItinerarySmart(
+        token,
+        tripId,
+        { interests_override: trip?.notes ?? undefined },
+        controller.signal,
+      );
       setPendingItineraries((prev) => ({ ...prev, [tripId]: itinerary }));
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        setActionError('The AI took too long and the request was cancelled. Try again — shorter trips generate faster.');
+        setActionError('The AI took too long. Try again — shorter trips generate faster.');
       } else {
         setActionError(err instanceof Error ? err.message : 'Failed to generate itinerary.');
       }
     } finally {
       window.clearTimeout(hardTimeout);
-      stopTimer(tripId);
-      trackingSet((prev) => {
+      setGeneratingSmartIds((prev) => {
         const next = new Set(prev);
         next.delete(tripId);
         return next;
@@ -249,26 +238,9 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     }
   };
 
-  const handleGenerate = (tripId: number) => {
-    const trip = trips.find((t) => t.id === tripId);
-    return runGeneration(
-      tripId,
-      (signal) => planItinerary(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
-      setGeneratingIds,
-    );
-  };
-
-  const handleGenerateSmart = (tripId: number) => {
-    const trip = trips.find((t) => t.id === tripId);
-    return runGeneration(
-      tripId,
-      (signal) => planItinerarySmart(token, tripId, { interests_override: trip?.notes ?? undefined }, signal),
-      setGeneratingSmartIds,
-    );
-  };
-
   const handleApply = async (tripId: number) => {
-    const itinerary = pendingItineraries[tripId];
+    // Itinerary may come from the streaming hook or the Smart Plan pending state.
+    const itinerary = streams[tripId]?.itinerary ?? pendingItineraries[tripId];
     if (!itinerary) return;
 
     setActionError(null);
@@ -277,6 +249,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
       await applyItinerary(token, tripId, itinerary);
       const freshTrips = await getTrips(token);
       setTrips(freshTrips);
+      resetStream(tripId);
       setPendingItineraries((prev) => {
         const next = { ...prev };
         delete next[tripId];
@@ -335,7 +308,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
         </motion.button>
       </div>
 
-      {/* ── Action error banner ── */}
+      {/* ── Global action error banner ── */}
       <AnimatePresence>
         {actionError && (
           <motion.div
@@ -351,7 +324,6 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
       {/* ── Empty state ── */}
       {trips.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 py-20 border-2 border-dashed border-gray-200 rounded-2xl text-center">
-          <span className="text-6xl select-none" aria-hidden="true">🗺️</span>
           <div>
             <h3 className="text-lg font-bold text-navy">No trips yet</h3>
             <p className="text-sm text-gray mt-1">Create your first trip to start planning.</p>
@@ -365,7 +337,6 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
           </motion.button>
         </div>
       ) : (
-        /* ── Trip card list ── */
         <motion.ul
           className="space-y-4 list-none p-0 m-0"
           variants={listVariants}
@@ -373,15 +344,21 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
           animate="show"
         >
           {trips.map((trip) => {
-            const isGenerating      = generatingIds.has(trip.id);
+            const streamState     = streams[trip.id];
+            const isStreaming     = streamState?.streaming ?? false;
+            const streamText     = streamState?.text ?? '';
+            const streamError    = streamState?.error ?? null;
+            const streamItinerary = streamState?.itinerary ?? null;
+
             const isGeneratingSmart = generatingSmartIds.has(trip.id);
-            const isAnyGenerating   = isGenerating || isGeneratingSmart;
+            const isAnyGenerating   = isStreaming || isGeneratingSmart;
             const isApplying        = applyingIds.has(trip.id);
             const isViewing         = viewingIds.has(trip.id);
-            const pendingItinerary  = pendingItineraries[trip.id];
+
+            // Completed itinerary from either streaming or Smart Plan
+            const pendingItinerary  = streamItinerary ?? pendingItineraries[trip.id] ?? null;
             const hasSavedItinerary = !!trip.description;
             const savedItinerary    = hasSavedItinerary ? parseItinerary(trip.description!) : null;
-            const elapsed           = generatingElapsed[trip.id] ?? 0;
 
             const startDate = new Date(trip.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             const endDate   = new Date(trip.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -397,29 +374,49 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <h3 className="text-lg font-extrabold text-navy leading-tight">{trip.title}</h3>
                   {hasSavedItinerary && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sunny/30 text-sunny-dark text-xs font-bold">
-                      ✓ Itinerary saved
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-sunny/30 text-sunny-dark text-xs font-bold">
+                      Itinerary saved
                     </span>
                   )}
                 </div>
 
                 {/* Meta */}
-                <div className="flex flex-col gap-1.5 text-sm">
-                  <span className="flex items-center gap-1.5 text-gray">
-                    <span aria-hidden="true">📍</span>
-                    <span className="font-medium text-navy">{trip.destination}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 text-gray">
-                    <span aria-hidden="true">📅</span>
-                    {startDate} – {endDate}
-                  </span>
+                <div className="flex flex-col gap-1 text-sm text-gray">
+                  <span className="font-medium text-navy">{trip.destination}</span>
+                  <span>{startDate} – {endDate}</span>
                 </div>
 
-                {/* Generating indicator */}
-                {isAnyGenerating && <GeneratingIndicator elapsedSeconds={elapsed} />}
+                {/* Per-card stream error */}
+                <AnimatePresence>
+                  {streamError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      className="px-4 py-3 rounded-xl bg-coral/10 border border-coral/25 text-coral text-sm font-medium"
+                      role="alert"
+                    >
+                      {streamError}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                {/* Pending itinerary preview */}
-                {pendingItinerary ? (
+                {/* Live streaming display */}
+                {isStreaming && (
+                  <StreamingDisplay
+                    text={streamText}
+                    onCancel={() => resetStream(trip.id)}
+                  />
+                )}
+
+                {/* Smart Plan spinner */}
+                {isGeneratingSmart && (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-coral/5 border border-coral/20 rounded-xl">
+                    <div className="w-4 h-4 rounded-full border-2 border-coral border-t-transparent animate-spin flex-shrink-0" />
+                    <span className="text-sm font-medium text-coral">Generating Smart Plan...</span>
+                  </div>
+                )}
+
+                {/* Completed itinerary pending review */}
+                {!isStreaming && pendingItinerary ? (
                   <ItineraryPanel
                     itinerary={pendingItinerary}
                     onApply={() => handleApply(trip.id)}
@@ -431,36 +428,41 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                       <ItineraryPanel itinerary={savedItinerary} />
                     )}
 
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <PillButton
-                        variant="ocean"
-                        onClick={() => handleGenerate(trip.id)}
-                        disabled={isAnyGenerating}
-                        busy={isGenerating}
-                      >
-                        {isGenerating ? 'Working…' : '✨ AI Plan'}
-                      </PillButton>
-
-                      <PillButton
-                        variant="coral"
-                        onClick={() => handleGenerateSmart(trip.id)}
-                        disabled={isAnyGenerating}
-                        busy={isGeneratingSmart}
-                      >
-                        {isGeneratingSmart ? 'Working…' : '🧠 Smart Plan'}
-                      </PillButton>
-
-                      {savedItinerary && (
-                        <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
-                          {isViewing ? '🙈 Hide' : '👁 View Itinerary'}
+                    {/* Action buttons — hidden while streaming */}
+                    {!isStreaming && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <PillButton
+                          variant="ocean"
+                          onClick={() => startStream(trip.id, trip.notes ?? undefined)}
+                          disabled={isAnyGenerating}
+                        >
+                          AI Plan
                         </PillButton>
-                      )}
 
-                      <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
-                        🗑 Delete
-                      </PillButton>
-                    </div>
+                        <PillButton
+                          variant="coral"
+                          onClick={() => handleGenerateSmart(trip.id)}
+                          disabled={isAnyGenerating}
+                          busy={isGeneratingSmart}
+                        >
+                          {isGeneratingSmart ? 'Working...' : 'Smart Plan'}
+                        </PillButton>
+
+                        {savedItinerary && (
+                          <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
+                            {isViewing ? 'Hide' : 'View Itinerary'}
+                          </PillButton>
+                        )}
+
+                        <PillButton variant="ghost" onClick={() => setEditingTrip(trip)}>
+                          Edit
+                        </PillButton>
+
+                        <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
+                          Delete
+                        </PillButton>
+                      </div>
+                    )}
                   </>
                 )}
               </motion.li>
@@ -468,6 +470,22 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
           })}
         </motion.ul>
       )}
+
+      {/* ── Edit modal ── */}
+      <AnimatePresence>
+        {editingTrip && (
+          <EditTripModal
+            key={editingTrip.id}
+            token={token}
+            trip={editingTrip}
+            onSuccess={(updated) => {
+              setTrips((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+              setEditingTrip(null);
+            }}
+            onClose={() => setEditingTrip(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

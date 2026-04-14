@@ -68,6 +68,29 @@ export const createTrip = async (token: string, data: TripCreate): Promise<Trip>
   
 };
 
+interface TripUpdate {
+  title?: string;
+  destination?: string;
+  start_date?: string;
+  end_date?: string;
+  notes?: string;
+}
+
+export const updateTrip = async (token: string, id: number, data: TripUpdate): Promise<Trip> => {
+  const response = await fetch(`${API_URL}/v1/trips/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update trip');
+  }
+  return response.json();
+};
+
 export const deleteTrip = async (token: string, id: number): Promise<void> => {
     const response = await fetch(`${API_URL}/v1/trips/${id}`, {
         method: "DELETE",
