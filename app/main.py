@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.v1.routes import auth, trips, ai
+from app.api.v1.routes import auth, trips, ai, search
 from app.api.middleware.error_handler import global_exception_handler
 from app.core.config import settings
 from app.core.limiter import limiter
@@ -32,3 +32,4 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.include_router(auth.router, prefix="/v1/auth", tags=["Auth"])
 app.include_router(trips.router, prefix="/v1/trips", tags=["Trips"])
 app.include_router(ai.router, prefix="/v1/ai", tags=["AI"])
+app.include_router(search.router, prefix="/v1/search", tags=["Search"])

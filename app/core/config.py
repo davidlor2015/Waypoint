@@ -20,6 +20,12 @@ class Settings(BaseSettings):
 
     OPENTRIPMAP_API_KEY: str = "5ae2e3f221c38a28845f05b6cf278d9b31c8db8c4432be2b5e5c6b12"
 
+    # Amadeus — self-service sandbox credentials.
+    # Sign up at https://developers.amadeus.com and copy the Client ID / Secret
+    # from your app's "Self Service" dashboard. Leave empty to disable search endpoints.
+    AMADEUS_CLIENT_ID: str = ""
+    AMADEUS_CLIENT_SECRET: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

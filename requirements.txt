@@ -40,3 +40,4 @@ passlib[bcrypt]==1.7.4
 email-validator==2.2.0
 slowapi==0.1.9
 cachetools==7.0.5
+amadeus>=9.0.0

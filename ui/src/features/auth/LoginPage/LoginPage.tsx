@@ -100,8 +100,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       >
         {/* Logo */}
         <div className="text-center mb-7">
-          <span className="text-4xl leading-none select-none" aria-hidden="true">✈️</span>
-          <h1 className="text-2xl font-extrabold text-navy mt-2 tracking-tight">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-ocean/10 mb-3">
+            <svg viewBox="0 0 20 20" className="w-6 h-6 text-ocean" fill="currentColor" aria-hidden="true">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-extrabold text-navy tracking-tight">
             Travel<span className="text-coral">Planner</span>
           </h1>
           <p className="text-sm text-gray mt-1.5">

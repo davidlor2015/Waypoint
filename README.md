@@ -18,6 +18,10 @@ A full-stack web application for planning trips with AI-generated itineraries. U
 * [Getting Started](#getting-started)
 * [Environment Variables](#environment-variables)
 * [API Reference](#api-reference)
+  * [Auth](#auth)
+  * [Trips](#trips)
+  * [AI](#ai)
+  * [Search](#search)
 
 ## Overview
 
@@ -30,6 +34,8 @@ Travel Planner lets users:
 * View saved itineraries stored relationally (per-day, per-event) in the database
 * Track per-trip packing lists and budget expenses, persisted in localStorage
 * Browse curated destination cards on an Explore page and launch trip planning directly from a card
+* Search live flight offers and get destination inspiration via the Amadeus sandbox API (clearly labelled as test data)
+* View per-destination quality scores (housing, cost of living, safety, etc.) sourced from the Teleport public API
 * View a gamified traveller profile with stats, earned badges, and destination history
 
 ## Tech Stack
@@ -48,7 +54,8 @@ Travel Planner lets users:
 | passlib + bcrypt   | 1.7.4 / 4.3.0 | Password hashing                               |
 | httpx              | 0.28.1        | Async HTTP client (Ollama + OpenTripMap calls) |
 | slowapi            | 0.1.9         | Rate limiting on AI generation endpoints       |
-| cachetools         | 7.0.5         | In-memory TTLCache for geocoding and POI data  |
+| cachetools         | 7.0.5         | In-memory TTLCache for geocoding, POI, and flight data |
+| amadeus            | 9.0+          | Official SDK for Amadeus travel APIs           |
 | Uvicorn            | 0.40.0        | ASGI server                                    |
 
 ### Frontend
@@ -73,8 +80,10 @@ Travel Planner lets users:
 | -------------------- | ------------------------------------------- |
 | MySQL 8.0            | Primary relational database                 |
 | Ollama + llama3.2:3b | Local LLM for AI itinerary generation       |
-| OpenTripMap API      | Real-world POI data for rule-based planning |
-| Nominatim (OSM)      | Free geocoding (city name to lat/lon)       |
+| OpenTripMap API      | Real-world POI data for rule-based planning           |
+| Nominatim (OSM)      | Free geocoding (city name to lat/lon)                 |
+| Amadeus (sandbox)    | Flight search and destination inspiration (test data) |
+| Teleport API         | City quality-of-life scores — public, no key needed   |
 
 ## Architecture
 
@@ -116,6 +125,7 @@ travel-planner/
 |   |           +-- auth.py           # /v1/auth endpoints
 |   |           +-- trips.py          # /v1/trips CRUD endpoints
 |   |           +-- ai.py             # /v1/ai generation endpoints (rate-limited)
+|   |           +-- search.py        # /v1/search flight and inspiration endpoints (Amadeus)
 |   +-- core/
 |   |   +-- config.py                 # Settings loaded from environment
 |   |   +-- limiter.py                # slowapi Limiter singleton
@@ -138,6 +148,7 @@ travel-planner/
 |   |   +-- trip.py
 |   |   +-- ai.py                     # ItineraryItem (+ lat/lon), DayPlan, ItineraryResponse
 |   |   +-- itinerary.py              # ItineraryEventRead, ItineraryDayRead
+|   |   +-- search.py                 # FlightOffer, FlightSearchResult, InspirationResult
 |   +-- services/
 |       +-- auth_service.py
 |       +-- trip_service.py
@@ -145,7 +156,9 @@ travel-planner/
 |       |   +-- itinerary_service.py  # LLM pipeline; apply saves to relational tables
 |       |   +-- rule_based_service.py # OpenTripMap pipeline with TTLCache
 |       +-- llm/
-|           +-- ollama_client.py
+|       |   +-- ollama_client.py
+|       +-- travel/
+|           +-- amadeus_service.py    # Amadeus SDK wrapper; asyncio.to_thread; 60 s TTLCache
 +-- alembic/
 |   +-- versions/
 |       +-- eb8ceb58b88e_create_user_table.py
@@ -176,7 +189,9 @@ travel-planner/
         |   |   +-- Dashboard.tsx     # Stat cards (staggered), dual bar charts, destinations map
         |   |   +-- DestinationsMap.tsx # react-leaflet map with geocoded trip pins
         |   +-- explore/
-        |   |   +-- ExplorePage.tsx   # 16 curated destination cards, search + tag filter, Plan CTA
+        |   |   +-- ExplorePage.tsx   # FlightSearch + Teleport scores + 16 curated cards with tag filter
+        |   +-- search/
+        |   |   +-- FlightSearch.tsx  # Tabbed flight search / inspiration UI; Amadeus test-env badge
         |   +-- profile/
         |   |   +-- useProfileStats.ts # useMemo derivation: stats, 8 badge rules, traveller title
         |   |   +-- ProfilePage.tsx   # Avatar, stat grid, badge grid (earned/locked), destinations
@@ -194,9 +209,11 @@ travel-planner/
             |   +-- auth.ts
             |   +-- trips.ts          # getTrips, createTrip, updateTrip, deleteTrip
             |   +-- ai.ts             # planItinerarySmart, applyItinerary, timeout constants
+            |   +-- search.ts         # searchFlights, getInspirations; typed response interfaces
             +-- hooks/
-            |   +-- useGeocode.ts     # Nominatim geocoding with module-level session cache
+            |   +-- useGeocode.ts           # Nominatim geocoding with module-level session cache
             |   +-- useStreamingItinerary.ts # SSE fetch stream reader, per-trip state management
+            |   +-- useTeleportScore.ts      # Teleport city quality score (public API, no key)
             +-- ui/
                 +-- FormField.tsx     # Shared label + animated error wrapper
                 +-- inputCls.ts       # Shared input className helper
@@ -291,8 +308,13 @@ features/
     Dashboard.tsx        stat cards with staggered entrance, dual Recharts bar charts
     DestinationsMap.tsx  Leaflet map with one pin per unique destination, OSM tiles
   explore/
-    ExplorePage.tsx      16 curated destination cards; search and tag filter; Plan CTA
-                         pre-fills CreateTripForm destination and switches tab automatically
+    ExplorePage.tsx      FlightSearch panel at top (Amadeus); 16 curated destination cards each
+                         enriched with a live Teleport quality score badge; search and tag filter;
+                         Plan CTA pre-fills CreateTripForm and switches tab automatically
+  search/
+    FlightSearch.tsx     two-tab panel: "Search Flights" (origin/dest/date/adults) and "Get Inspired"
+                         (cheapest destinations from an origin); prominent "Amadeus Test Environment"
+                         badge on every result; "Plan trip" CTA passes destination to trip creation
   profile/
     useProfileStats.ts   pure useMemo hook — derives stats, 8 badge rules (including
                          localStorage reads for packing/budget badges), traveller title
@@ -347,8 +369,10 @@ All `fetch` calls are isolated in `shared/api/` or `shared/hooks/`. React compon
 shared/api/auth.ts                -> login(), register()
 shared/api/trips.ts               -> getTrips(), createTrip(), updateTrip(), deleteTrip()
 shared/api/ai.ts                  -> planItinerarySmart(), applyItinerary()
+shared/api/search.ts              -> searchFlights(), getInspirations()
 shared/hooks/useStreamingItinerary -> manages SSE fetch stream for AI Plan
 shared/hooks/useGeocode           -> geocodes destination strings for the map
+shared/hooks/useTeleportScore     -> fetches Teleport city quality score per destination card
 ```
 
 ## AI Integration
@@ -630,6 +654,8 @@ pytest tests/ -v
 | `OLLAMA_TIMEOUT_SECONDS`      | Yes      | Request timeout for LLM calls                                      |
 | `OPENTRIPMAP_API_KEY`         | No       | Free key from opentripmap.com, required for /v1/ai/plan-smart      |
 | `AI_RATE_LIMIT`               | No       | slowapi limit string for AI endpoints (default: 10/minute)         |
+| `AMADEUS_CLIENT_ID`           | No       | Amadeus self-service app Client ID — required for /v1/search/*     |
+| `AMADEUS_CLIENT_SECRET`       | No       | Amadeus self-service app Client Secret — required for /v1/search/* |
 
 ### Frontend
 
@@ -687,3 +713,32 @@ Both plan endpoints accept the same request body:
 ```
 
 Exceeded rate limits return `HTTP 429 Too Many Requests`.
+
+### Search
+
+All search endpoints use the **Amadeus sandbox** (test data, not live availability) and require authentication. Results are cached server-side for 60 seconds. The `test_env: true` field is always present in responses and the frontend labels results clearly.
+
+| Method | Endpoint                    | Auth | Description                                              |
+| ------ | --------------------------- | ---- | -------------------------------------------------------- |
+| GET    | `/v1/search/flights`        | JWT  | Search flight offers for a given route and date          |
+| GET    | `/v1/search/inspirations`   | JWT  | Get cheapest destinations reachable from an origin city  |
+
+**Flight search query parameters:**
+
+| Parameter     | Required | Description                          |
+| ------------- | -------- | ------------------------------------ |
+| `origin`      | Yes      | 3-letter IATA code (e.g. `LHR`)      |
+| `destination` | Yes      | 3-letter IATA code (e.g. `NRT`)      |
+| `date`        | Yes      | Departure date `YYYY-MM-DD`          |
+| `adults`      | No       | Number of adult passengers (default 1, max 9) |
+
+**Inspiration query parameters:**
+
+| Parameter   | Required | Description                                        |
+| ----------- | -------- | -------------------------------------------------- |
+| `origin`    | Yes      | 3-letter IATA code (e.g. `MAD`)                    |
+| `max_price` | No       | Optional upper price limit in USD                  |
+
+Both endpoints return `HTTP 503` with a descriptive message when `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` are not configured.
+
+> **Teleport city scores** are fetched directly from the public Teleport API (`api.teleport.org`) by the frontend — no backend endpoint or API key required. Each curated destination card loads its score independently and degrades silently if the city is not found in the Teleport dataset.

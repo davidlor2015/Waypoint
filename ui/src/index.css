@@ -41,7 +41,7 @@
 
   body {
     font-family: var(--font-sans);
-    font-size: 1rem;
+    font-size: 0.9375rem;
     line-height: 1.5;
     color: theme(--color-navy);
     background-color: theme(--color-white);

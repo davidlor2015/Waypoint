@@ -84,7 +84,7 @@ function App() {
         onLogout={handleLogout}
       >
         {view === "dashboard" && <Dashboard trips={trips} />}
-        {view === "explore"   && <ExplorePage onPlanTrip={handlePlanTrip} />}
+        {view === "explore"   && <ExplorePage token={token!} onPlanTrip={handlePlanTrip} />}
         {view === "profile"   && <ProfilePage trips={trips} userEmail={user.email} />}
 
         {view === "trips" &&

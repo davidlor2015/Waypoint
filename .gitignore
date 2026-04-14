@@ -12,3 +12,6 @@ app/api/__pycache__/
 app/api/routes/__pycache__/
 tests/__pycache__/
 dev.log
+ui/playwright-report/
+ui/test-results/
+e2e_test.db

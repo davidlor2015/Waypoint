@@ -14,13 +14,51 @@ interface DashboardProps {
 }
 
 interface StatConfig {
-  emoji: string;
+  icon: React.ReactNode;
   value: number;
   label: string;
   valueColor: string;
   bgColor: string;
   borderColor: string;
 }
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+const GlobeIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+  </svg>
+);
+
+const CalendarIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+  </svg>
+);
+
+const MapPinIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+  </svg>
+);
+
+const ChartIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-8 h-8 text-gray-300" fill="currentColor" aria-hidden="true">
+    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+  </svg>
+);
+
+const MapIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-10 h-10 text-gray-200" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M12 1.586l-4 4V17l4-4V1.586zM3.707 3.293A1 1 0 002 4v10a1 1 0 00.293.707L6 18.414V5.586L3.707 3.293zM17.707 4.293L14 .586V13.414l2.293 2.293A1 1 0 0018 15V5a1 1 0 00-.293-.707z" clipRule="evenodd" />
+  </svg>
+);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -63,13 +101,13 @@ const chartVariants = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-const StatCard = ({ emoji, value, label, valueColor, bgColor, borderColor }: StatConfig) => (
+const StatCard = ({ icon, value, label, valueColor, bgColor, borderColor }: StatConfig) => (
   <motion.div
     variants={statCardVariants}
     className={`flex flex-col items-center justify-center gap-1 rounded-2xl border p-6 text-center ${bgColor} ${borderColor}`}
   >
-    <span className="text-3xl leading-none select-none" aria-hidden="true">{emoji}</span>
-    <span className={`text-4xl font-extrabold tabular-nums leading-none mt-2 ${valueColor}`}>
+    <span className={`${valueColor} opacity-70`}>{icon}</span>
+    <span className={`text-3xl font-extrabold tabular-nums leading-none mt-2 ${valueColor}`}>
       {value}
     </span>
     <span className="text-sm text-gray font-medium mt-0.5">{label}</span>
@@ -91,7 +129,7 @@ const ChartCard = ({ title, empty, emptyMessage, children }: ChartCardProps) => 
     <h3 className="text-sm font-bold text-navy mb-4">{title}</h3>
     {empty ? (
       <div className="flex flex-col items-center justify-center h-48 text-gray text-sm gap-2">
-        <span className="text-3xl" aria-hidden="true">📊</span>
+        <ChartIcon />
         {emptyMessage}
       </div>
     ) : (
@@ -135,17 +173,17 @@ export function Dashboard({ trips }: DashboardProps) {
   }, [trips]);
 
   const statCards: StatConfig[] = [
-    { emoji: '🌍', value: trips.length,       label: 'Total Trips',       valueColor: 'text-ocean',     bgColor: 'bg-ocean/5',   borderColor: 'border-ocean/15'  },
-    { emoji: '📅', value: stats.totalDays,    label: 'Days Traveling',    valueColor: 'text-coral',     bgColor: 'bg-coral/5',   borderColor: 'border-coral/15'  },
-    { emoji: '📍', value: stats.destinations, label: 'Destinations',      valueColor: 'text-sunny-dark', bgColor: 'bg-sunny/10', borderColor: 'border-sunny/30'  },
-    { emoji: '✅', value: stats.withItinerary,label: 'Saved Itineraries', valueColor: 'text-success',   bgColor: 'bg-success/5', borderColor: 'border-success/15'},
+    { icon: <GlobeIcon />,    value: trips.length,        label: 'Total Trips',       valueColor: 'text-ocean',      bgColor: 'bg-ocean/5',   borderColor: 'border-ocean/15'   },
+    { icon: <CalendarIcon />, value: stats.totalDays,     label: 'Days Traveling',    valueColor: 'text-coral',      bgColor: 'bg-coral/5',   borderColor: 'border-coral/15'   },
+    { icon: <MapPinIcon />,   value: stats.destinations,  label: 'Destinations',      valueColor: 'text-sunny-dark', bgColor: 'bg-sunny/10',  borderColor: 'border-sunny/30'   },
+    { icon: <CheckIcon />,    value: stats.withItinerary, label: 'Saved Itineraries', valueColor: 'text-success',    bgColor: 'bg-success/5', borderColor: 'border-success/15' },
   ];
 
   // Empty state — no trips at all
   if (trips.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-        <span className="text-6xl select-none" aria-hidden="true">🗺️</span>
+        <MapIcon />
         <div>
           <h3 className="text-lg font-bold text-navy">No data yet</h3>
           <p className="text-sm text-gray mt-1">Create and plan trips to see your dashboard stats.</p>

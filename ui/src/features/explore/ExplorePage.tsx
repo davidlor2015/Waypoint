@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { FlightSearch } from '../search';
+import { useTeleportScore } from '../../shared/hooks/useTeleportScore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ExplorePageProps {
+  token: string;
   onPlanTrip: (destination: string) => void;
 }
 
@@ -69,7 +72,35 @@ const cardVariants = {
   show:   { opacity: 1, y: 0, transition: { type: 'spring' as const, bounce: 0.25, duration: 0.45 } },
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Teleport score badge ──────────────────────────────────────────────────────
+
+const TeleportBadge = ({ city }: { city: string }) => {
+  const { data, loading } = useTeleportScore(city);
+
+  if (loading) {
+    return (
+      <span className="inline-block w-16 h-4 rounded-full bg-gray-100 animate-pulse" />
+    );
+  }
+  if (!data) return null;
+
+  const score = data.teleport_city_score;
+  const color =
+    score >= 70 ? 'text-success border-success/30 bg-success/10' :
+    score >= 45 ? 'text-sunny-dark border-sunny/40 bg-sunny/20' :
+                  'text-coral border-coral/25 bg-coral/10';
+
+  return (
+    <span
+      title={`Teleport city quality score: ${score}/100`}
+      className={`text-xs font-bold px-2 py-0.5 rounded-full border ${color}`}
+    >
+      {score}/100
+    </span>
+  );
+};
+
+// ── Destination card ──────────────────────────────────────────────────────────
 
 interface DestinationCardProps {
   destination: Destination;
@@ -100,6 +131,12 @@ const DestinationCard = ({ destination, onPlanTrip }: DestinationCardProps) => {
       <div className="px-5 py-4 flex flex-col gap-3 flex-1">
         <p className="text-sm text-gray leading-relaxed flex-1">{destination.description}</p>
 
+        {/* Teleport score */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray">City score:</span>
+          <TeleportBadge city={destination.city} />
+        </div>
+
         <div className="flex items-center justify-between gap-2 flex-wrap">
           {/* Tag pill */}
           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${config.pillCls}`}>
@@ -124,7 +161,7 @@ const DestinationCard = ({ destination, onPlanTrip }: DestinationCardProps) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export const ExplorePage = ({ onPlanTrip }: ExplorePageProps) => {
+export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
   const [search,    setSearch]    = useState('');
   const [activeTag, setActiveTag] = useState<'All' | DestinationTag>('All');
 
@@ -141,12 +178,22 @@ export const ExplorePage = ({ onPlanTrip }: ExplorePageProps) => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
 
       {/* ── Header ── */}
       <div>
         <h2 className="text-2xl font-extrabold text-navy">Explore</h2>
         <p className="text-sm text-gray mt-0.5">Find your next adventure and start planning instantly.</p>
+      </div>
+
+      {/* ── Flight Search (Amadeus) ── */}
+      <FlightSearch token={token} onPlanTrip={onPlanTrip} />
+
+      {/* ── Divider ── */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-100" />
+        <span className="text-xs text-gray font-semibold uppercase tracking-widest">Curated Destinations</span>
+        <div className="flex-1 h-px bg-gray-100" />
       </div>
 
       {/* ── Search + filter row ── */}
@@ -193,6 +240,8 @@ export const ExplorePage = ({ onPlanTrip }: ExplorePageProps) => {
       {/* ── Results count ── */}
       <p className="text-xs text-gray font-medium">
         {filtered.length} {filtered.length === 1 ? 'destination' : 'destinations'}
+        &nbsp;·&nbsp;
+        <span title="Live quality scores from Teleport API">City scores via Teleport</span>
       </p>
 
       {/* ── Grid ── */}
