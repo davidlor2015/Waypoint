@@ -1,4 +1,4 @@
-# Travel Planner
+# Waypoint
 
 A full-stack web application for planning trips with AI-generated itineraries. Users can register, log in, manage trips, and generate day-by-day travel plans using either a locally-hosted large language model or a rule-based engine powered by real-world POI data.
 
@@ -26,7 +26,7 @@ A full-stack web application for planning trips with AI-generated itineraries. U
 
 ## Overview
 
-Travel Planner lets users:
+Waypoint lets users:
 
 - Register and log in with secure JWT-based authentication
 - Create, view, update, and delete trips with destination and date information

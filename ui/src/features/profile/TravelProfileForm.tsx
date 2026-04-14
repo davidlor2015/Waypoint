@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { z } from 'zod';
@@ -52,7 +52,8 @@ const travelProfileSchema = z
     path: ['group_size_max'],
   });
 
-type TravelProfileFormData = z.infer<typeof travelProfileSchema>;
+type TravelProfileFormInput = z.input<typeof travelProfileSchema>;
+type TravelProfileFormData = z.output<typeof travelProfileSchema>;
 
 interface TravelProfileFormProps {
   token: string;
@@ -94,7 +95,7 @@ export const TravelProfileForm = ({
     setValue,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<TravelProfileFormData>({
+  } = useForm<TravelProfileFormInput, unknown, TravelProfileFormData>({
     resolver: zodResolver(travelProfileSchema),
     defaultValues: {
       travel_style: profile?.travel_style ?? 'relaxed',
@@ -118,10 +119,20 @@ export const TravelProfileForm = ({
     setValue('interests', next, { shouldValidate: true, shouldDirty: true });
   };
 
-  const onSubmit = async (data: TravelProfileFormData) => {
+  const onSubmit: SubmitHandler<TravelProfileFormData> = async (data) => {
     try {
-      const saveProfile = onSubmitProfile ?? ((payload: TravelProfilePayload) => upsertProfile(token, payload));
-      const savedProfile = await saveProfile(data as TravelProfilePayload);
+      const saveProfile =
+        onSubmitProfile ??
+        ((payload: TravelProfilePayload) => upsertProfile(token, payload));
+      const payload: TravelProfilePayload = {
+        travel_style: data.travel_style,
+        budget_range: data.budget_range,
+        interests: data.interests,
+        group_size_min: data.group_size_min,
+        group_size_max: data.group_size_max,
+        is_discoverable: data.is_discoverable,
+      };
+      const savedProfile = await saveProfile(payload);
       onSuccess?.(savedProfile);
     } catch (err) {
       setError('root', {

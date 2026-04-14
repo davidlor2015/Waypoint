@@ -1,13 +1,11 @@
 import { motion } from 'framer-motion';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 interface LandingPageProps {
   onGetStarted: () => void;
   onSignIn: () => void;
 }
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
 
 const PlaneIcon = () => (
   <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor" aria-hidden="true">
@@ -40,8 +38,6 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-// ── Animation variants ────────────────────────────────────────────────────────
-
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show:   { opacity: 1, y: 0, transition: { type: 'spring' as const, bounce: 0.22, duration: 0.55 } },
@@ -51,8 +47,6 @@ const stagger = {
   hidden: {},
   show: { transition: { staggerChildren: 0.1 } },
 };
-
-// ── Feature data ──────────────────────────────────────────────────────────────
 
 const FEATURES = [
   {
@@ -78,7 +72,6 @@ const FEATURES = [
   },
 ];
 
-// ── How it works steps ────────────────────────────────────────────────────────
 
 const STEPS = [
   {
@@ -170,12 +163,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         className="relative max-w-2xl mx-auto space-y-6"
       >
         {/* Eyebrow pill */}
-        <motion.div variants={fadeUp} className="flex justify-center">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber/10 text-amber text-xs font-bold border border-amber/20">
-            <SparkleIcon />
-            Smart travel planning
-          </span>
-        </motion.div>
+     
 
         {/* Headline */}
         <motion.h1

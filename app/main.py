@@ -11,7 +11,7 @@ from app.core.logging import configure_logging
 
 configure_logging()
 
-app = FastAPI(title="Travel Planner API")
+app = FastAPI(title="Waypoint API")
 
 # CORS — origins are configured via CORS_ORIGINS env var.
 app.add_middleware(
