@@ -1,4 +1,4 @@
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, useWatch, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { z } from 'zod';
@@ -93,7 +93,7 @@ export const TravelProfileForm = ({
     handleSubmit,
     setError,
     setValue,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<TravelProfileFormInput, unknown, TravelProfileFormData>({
     resolver: zodResolver(travelProfileSchema),
@@ -107,10 +107,10 @@ export const TravelProfileForm = ({
     },
   });
 
-  const selectedStyle = watch('travel_style');
-  const selectedBudget = watch('budget_range');
-  const selectedInterests = watch('interests');
-  const isDiscoverable = watch('is_discoverable');
+  const selectedStyle     = useWatch({ control, name: 'travel_style' });
+  const selectedBudget    = useWatch({ control, name: 'budget_range' });
+  const selectedInterests = useWatch({ control, name: 'interests' });
+  const isDiscoverable    = useWatch({ control, name: 'is_discoverable' });
 
   const toggleInterest = (interest: string) => {
     const next = selectedInterests.includes(interest)

@@ -168,7 +168,18 @@ class TestRuleBasedCaching:
         The class is substituted via patch so that
         `async with httpx.AsyncClient(timeout=N) as client:` uses our fake.
         geocode_counter and poi_counter are appended to on each network hit.
+
+        The radius endpoint returns ENOUGH_POIS (>= min_candidates for a 3-day
+        trip: 3 days × 3 acts = 9) so the radius expansion stops at the first
+        radius (5 km) and makes exactly one network call per request.
         """
+        # min_candidates for paris_trip (3 days) = 3 × ACTS_PER_DAY (3) = 9.
+        # Return 12 so _rank_pois has headroom after any filtering.
+        enough_pois = [
+            {"name": f"Attraction {i}", "kinds": "historic", "rate": 3, "xid": f"X{i:03d}"}
+            for i in range(12)
+        ]
+
         class FakeResponse:
             def __init__(self, data):
                 self._data = data
@@ -196,7 +207,7 @@ class TestRuleBasedCaching:
                     return FakeResponse([{"lat": "48.8566", "lon": "2.3522"}])
                 if "radius" in url:
                     poi_counter.append(1)
-                    return FakeResponse(MOCK_POIS)
+                    return FakeResponse(enough_pois)
                 # POI detail / xid endpoint
                 return FakeResponse({"wikipedia_extracts": {"text": "A famous landmark."}})
 

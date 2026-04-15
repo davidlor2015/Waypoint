@@ -50,8 +50,9 @@ function App() {
   const [user,  setUser]  = useState<UserProfile | null>(() => readStoredUser());
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
 
-  // Only true when we have a token but no cached user (first login, cleared cache).
-  const [loading, setLoading] = useState(false);
+  // Derived: true when we have a token but no user yet (first login, cleared cache).
+  // Avoids calling setState synchronously inside an effect.
+  const loading = Boolean(token && !user);
 
   // ── Auth revalidation ────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ function App() {
     }
 
     // No cached user — must fetch before rendering (post-login or cleared cache).
-    setLoading(true);
+    // `loading` is already true (derived above) so no setState call needed here.
     getMe(token)
       .then((userData) => {
         setUser(userData);
@@ -87,8 +88,7 @@ function App() {
         localStorage.removeItem(USER_KEY);
         setToken(null);
         setUser(null);
-      })
-      .finally(() => setLoading(false));
+      });
 
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   // Intentionally omits `user`: this effect should only re-run when the token
