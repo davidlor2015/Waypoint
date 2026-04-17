@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { API_URL } from '../../app/config';
 import type { Itinerary } from '../api/ai';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 export interface StreamState {
   text: string;
@@ -16,7 +16,7 @@ interface SSEMessage {
   data: string;
 }
 
-// ── SSE parser ────────────────────────────────────────────────────────────────
+
 
 /**
  * Reads raw bytes from a fetch ReadableStream and yields parsed SSE messages.
@@ -51,7 +51,7 @@ async function* parseSSE(
   }
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+
 
 /**
  * Manages SSE-based itinerary streaming for multiple trips simultaneously.

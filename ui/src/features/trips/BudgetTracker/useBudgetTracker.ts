@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useReducer, useEffect, useCallback } from 'react';
 import {
   getBudget,
   updateBudgetLimit,
@@ -24,24 +24,41 @@ export interface UseBudgetTrackerReturn {
   removeExpense: (id: number) => Promise<void>;
 }
 
+type BudgetState = { loading: boolean; error: string | null; limit: number | null; expenses: BudgetExpense[] };
+type BudgetAction =
+  | { type: 'fetch/start' }
+  | { type: 'fetch/done'; limit: number | null; expenses: BudgetExpense[] }
+  | { type: 'fetch/error'; message: string }
+  | { type: 'limit/set'; limit: number | null; expenses: BudgetExpense[] }
+  | { type: 'expense/add'; expense: BudgetExpense }
+  | { type: 'expense/remove'; id: number };
+
+function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
+  switch (action.type) {
+    case 'fetch/start':    return { ...state, loading: true, error: null };
+    case 'fetch/done':     return { loading: false, error: null, limit: action.limit, expenses: action.expenses };
+    case 'fetch/error':    return { ...state, loading: false, error: action.message };
+    case 'limit/set':      return { ...state, limit: action.limit, expenses: action.expenses };
+    case 'expense/add':    return { ...state, expenses: [...state.expenses, action.expense] };
+    case 'expense/remove': return { ...state, expenses: state.expenses.filter((e) => e.id !== action.id) };
+  }
+}
+
 export function useBudgetTracker(token: string, tripId: number): UseBudgetTrackerReturn {
-  const [limit, setLimitState] = useState<number | null>(null);
-  const [expenses, setExpenses] = useState<BudgetExpense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [{ loading, error, limit, expenses }, dispatch] = useReducer(budgetReducer, {
+    loading: true, error: null, limit: null, expenses: [],
+  });
 
   useEffect(() => {
     let cancelled = false;
+    dispatch({ type: 'fetch/start' });
     getBudget(token, tripId)
       .then((data) => {
-        if (!cancelled) {
-          setLimitState(data.limit);
-          setExpenses(data.expenses);
-          setError(null);
-        }
+        if (!cancelled) dispatch({ type: 'fetch/done', limit: data.limit, expenses: data.expenses });
       })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch((err) => {
+        if (!cancelled) dispatch({ type: 'fetch/error', message: err instanceof Error ? err.message : 'Failed to load' });
+      });
     return () => { cancelled = true; };
   }, [token, tripId]);
 
@@ -51,20 +68,19 @@ export function useBudgetTracker(token: string, tripId: number): UseBudgetTracke
 
   const setLimit = useCallback(async (amount: number | null) => {
     const data = await updateBudgetLimit(token, tripId, amount);
-    setLimitState(data.limit);
-    setExpenses(data.expenses);
+    dispatch({ type: 'limit/set', limit: data.limit, expenses: data.expenses });
   }, [token, tripId]);
 
   const addExpense = useCallback(async (label: string, amount: number, category: ExpenseCategory) => {
     const trimmed = label.trim();
     if (!trimmed || amount <= 0) return;
     const expense = await createExpense(token, tripId, { label: trimmed, amount, category });
-    setExpenses((prev) => [...prev, expense]);
+    dispatch({ type: 'expense/add', expense });
   }, [token, tripId]);
 
   const removeExpense = useCallback(async (id: number) => {
     await deleteExpense(token, tripId, id);
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    dispatch({ type: 'expense/remove', id });
   }, [token, tripId]);
 
   return { limit, expenses, totalSpent, remaining, isOverBudget, loading, error, setLimit, addExpense, removeExpense };

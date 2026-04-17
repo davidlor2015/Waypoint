@@ -6,6 +6,7 @@ export type AnalyticsEvent = {
 export function track(event: AnalyticsEvent): void {
   if (import.meta.env.DEV) {
     // Lightweight local instrumentation for now; can be swapped with Segment/PostHog later.
+    // eslint-disable-next-line no-console
     console.info('[analytics]', event.name, event.props ?? {});
   }
 }
