@@ -34,12 +34,12 @@ export function useExploreDestinations(token: string): UseExploreDestinationsRes
 
     let cancelled = false;
     setLoading(true);
-    setError(null);
 
     getExploreDestinations(token)
       .then((data) => {
         if (cancelled) return;
         cache = data;
+        setError(null);
         setPopular(data.popular);
         setRegions(data.regions);
       })
