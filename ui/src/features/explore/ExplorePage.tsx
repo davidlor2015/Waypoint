@@ -5,7 +5,8 @@ import { useTeleportScoreBySlug } from '../../shared/hooks/useTeleportScoreBySlu
 import { useTeleportCityImage } from '../../shared/hooks/useTeleportCityImage';
 import { useWishlist } from '../../shared/hooks/useWishlist';
 import { useAllTeleportScores } from '../../shared/hooks/useAllTeleportScores';
-import { useTeleportRegionCities, type Region } from '../../shared/hooks/useTeleportRegionCities';
+import { useExploreDestinations } from '../../shared/hooks/useExploreDestinations';
+import type { Region } from '../../shared/api/search';
 import { WishlistButton } from '../../shared/ui';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ interface Destination {
 
 // ── Static popular data ───────────────────────────────────────────────────────
 
-const POPULAR_DESTINATIONS: Destination[] = [
+const FALLBACK_POPULAR_DESTINATIONS: Destination[] = [
   { id: 'tokyo',      city: 'Tokyo',        country: 'Japan',        tag: 'Culture',   description: 'Neon lights, ancient temples, and world-class ramen.'          },
   { id: 'bali',       city: 'Bali',         country: 'Indonesia',    tag: 'Beach',     description: 'Terraced rice fields, hidden temples, and turquoise surf.'      },
   { id: 'paris',      city: 'Paris',        country: 'France',       tag: 'Culture',   description: 'Café culture, art museums, and a tower lit at midnight.'        },
@@ -504,19 +505,25 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
   const [selectedDest,  setSelectedDest]  = useState<Destination | null>(null);
 
   const { savedIds, toggle, isSaved } = useWishlist();
-  const [featured] = useState<Destination>(
-    () => POPULAR_DESTINATIONS[Math.floor(Math.random() * POPULAR_DESTINATIONS.length)],
-  );
+  const {
+    popular: popularDestinations,
+    regions: regionDestinations,
+    loading: exploreLoading,
+    error: exploreError,
+  } = useExploreDestinations(token);
 
-  const { cities: regionCities, loading: regionLoading, error: regionError } =
-    useTeleportRegionCities(activeRegion);
+  const effectivePopular = popularDestinations.length > 0 ? popularDestinations : FALLBACK_POPULAR_DESTINATIONS;
+
+  const [featured] = useState<Destination>(
+    () => effectivePopular[Math.floor(Math.random() * effectivePopular.length)],
+  );
 
   const destinations: Destination[] = useMemo(
     () =>
       activeRegion === 'popular'
-        ? POPULAR_DESTINATIONS
-        : regionCities.map((c) => ({ id: c.id, city: c.city, country: '' })),
-    [activeRegion, regionCities],
+        ? effectivePopular
+        : regionDestinations[activeRegion] ?? [],
+    [activeRegion, effectivePopular, regionDestinations],
   );
 
   // Reset tag filter when switching away from popular (tags don't exist on region cities)
@@ -668,7 +675,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
       {/* Results count + sort */}
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-flint font-medium">
-          {regionLoading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'destination' : 'destinations'}`}
+          {exploreLoading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'destination' : 'destinations'}`}
           &nbsp;·&nbsp;
           <span title="Live quality scores from Teleport API">City scores via Teleport</span>
         </p>
@@ -692,14 +699,14 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
       </div>
 
       {/* Grid */}
-      {regionLoading ? (
+      {exploreLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
-      ) : regionError ? (
+      ) : exploreError && popularDestinations.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 border-2 border-dashed border-smoke rounded-2xl text-center">
           <h3 className="text-lg font-bold text-espresso">Could not load destinations</h3>
-          <p className="text-sm text-flint">{regionError}</p>
+          <p className="text-sm text-flint">{exploreError}</p>
           <motion.button
             onClick={() => setActiveRegion('popular')}
             whileHover={{ scale: 1.04 }}

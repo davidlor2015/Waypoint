@@ -46,3 +46,18 @@ class InspirationResult(BaseModel):
     origin: str
     suggestions: list[FlightInspiration]
     test_env: bool = True
+
+
+# ── Explore destinations ──────────────────────────────────────────────────────
+
+class ExploreDestination(BaseModel):
+    id: str
+    city: str
+    country: str = ""
+    tag: str | None = None
+    description: str | None = None
+
+
+class ExploreDestinationsResult(BaseModel):
+    popular: list[ExploreDestination]
+    regions: dict[str, list[ExploreDestination]]
