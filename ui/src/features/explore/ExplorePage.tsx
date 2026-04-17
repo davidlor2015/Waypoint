@@ -4,7 +4,7 @@ import { FlightSearch } from '../search';
 import { useTeleportScoreBySlug } from '../../shared/hooks/useTeleportScoreBySlug';
 import { useTeleportCityImage } from '../../shared/hooks/useTeleportCityImage';
 import { useWishlist } from '../../shared/hooks/useWishlist';
-import { useAllTeleportScores } from '../../shared/hooks/useAllTeleportScores';
+
 import { useExploreDestinations } from '../../shared/hooks/useExploreDestinations';
 import type { Region } from '../../shared/api/search';
 import { WishlistButton } from '../../shared/ui';
