@@ -523,17 +523,6 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
         : regionDestinations[activeRegion] ?? [],
     [activeRegion, effectivePopular, regionDestinations],
   );
-  // Collect scores for all visible destinations
-const scoresBySlug = useMemo(() => {
-  const map = new Map<string, number>();
-  destinations.forEach(dest => {
-    const { data } = useTeleportScoreBySlug(dest.id, false); // false disables immediate fetch if not needed
-    if (data?.teleport_city_score != null) {
-      map.set(dest.id, data.teleport_city_score);
-    }
-  });
-  return map;
-}, [destinations]);
 
   const handleRegionChange = (region: Region) => {
     setActiveRegion(region);
