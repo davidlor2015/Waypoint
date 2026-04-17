@@ -6,6 +6,8 @@ import {
   type FlightOffer,
   type FlightInspiration,
 } from '../../shared/api/search';
+import { AIRPORT_OPTIONS, parseAirportInput } from '../../shared/data/airports';
+import { track } from '../../shared/analytics';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,14 +74,21 @@ const IataInput = ({ id, label, value, onChange, placeholder = 'e.g. LHR' }: Iat
     <input
       id={id}
       type="text"
-      maxLength={3}
       value={value}
       onChange={(e) => onChange(e.target.value.toUpperCase())}
       placeholder={placeholder}
+      list={`${id}-options`}
       className="w-full px-3 py-2 rounded-xl border border-smoke bg-white text-sm font-mono
                  text-espresso placeholder:text-flint/60 focus:outline-none focus:ring-2
                  focus:ring-amber/35 focus:border-amber transition-all duration-150 uppercase"
     />
+    <datalist id={`${id}-options`}>
+      {AIRPORT_OPTIONS.map((option) => (
+        <option key={`${id}-${option.iata}`} value={`${option.city} (${option.iata})`}>
+          {option.country}
+        </option>
+      ))}
+    </datalist>
   </div>
 );
 
@@ -211,13 +220,21 @@ export const FlightSearch = ({ token, onPlanTrip }: FlightSearchProps) => {
 
   const handleSearchFlights = async () => {
     if (!origin || !destination || !date) return;
+    const parsedOrigin = parseAirportInput(origin);
+    const parsedDestination = parseAirportInput(destination);
+    if (parsedOrigin.length !== 3 || parsedDestination.length !== 3) {
+      setError('Please enter a valid airport city or 3-letter IATA code.');
+      return;
+    }
     reset();
     setLoading(true);
     try {
-      const res = await searchFlights(token, origin, destination, date, adults);
+      const res = await searchFlights(token, parsedOrigin, parsedDestination, date, adults);
       setFlightOffers(res.offers);
+      track({ name: 'flight_search_success', props: { origin: parsedOrigin, destination: parsedDestination, adults, results: res.offers.length } });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Search failed.');
+      track({ name: 'flight_search_error', props: { origin: parsedOrigin, destination: parsedDestination } });
     } finally {
       setLoading(false);
     }
@@ -225,13 +242,20 @@ export const FlightSearch = ({ token, onPlanTrip }: FlightSearchProps) => {
 
   const handleGetInspirations = async () => {
     if (!inspOrigin) return;
+    const parsedOrigin = parseAirportInput(inspOrigin);
+    if (parsedOrigin.length !== 3) {
+      setError('Please enter a valid airport city or 3-letter IATA code.');
+      return;
+    }
     reset();
     setLoading(true);
     try {
-      const res = await getInspirations(token, inspOrigin, maxPrice ? Number(maxPrice) : undefined);
+      const res = await getInspirations(token, parsedOrigin, maxPrice ? Number(maxPrice) : undefined);
       setInspirations(res.suggestions);
+      track({ name: 'inspiration_search_success', props: { origin: parsedOrigin, results: res.suggestions.length } });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not fetch inspirations.');
+      track({ name: 'inspiration_search_error', props: { origin: parsedOrigin } });
     } finally {
       setLoading(false);
     }

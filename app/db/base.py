@@ -8,3 +8,4 @@ from app.models.match_result import MatchResult  # noqa: F401
 from app.models.travel_profile import BudgetRange, TravelProfile, TravelStyle  # noqa: F401
 from app.models.packing_item import PackingItem  # noqa: F401
 from app.models.budget_expense import BudgetExpense  # noqa: F401
+from app.models.explore_destination import ExploreDestination  # noqa: F401

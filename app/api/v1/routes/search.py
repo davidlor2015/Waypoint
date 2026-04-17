@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_current_user
+from app.api.deps import SessionDep, get_current_user
 from app.models.user import User
 from app.schemas.search import FlightSearchResult, InspirationResult, ExploreDestinationsResult
 from app.services.travel import amadeus_service

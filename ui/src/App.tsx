@@ -1,15 +1,18 @@
 // src/App.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { LandingPage } from "./features/landing";
 import { LoginPage } from "./features/auth/LoginPage";
 import { getMe, type UserProfile } from "./shared/api/auth";
-import { TripList } from "./features/trips/TripList";
-import { CreateTripForm } from "./features/trips/CreateTripForm";
-import { Dashboard } from "./features/dashboard";
-import { MatchingPage, ProfilePage } from "./features/profile";
-import { ExplorePage } from "./features/explore";
 import { getTrips, type Trip } from "./shared/api/trips";
+import { track } from "./shared/analytics";
 import { AppShell, type AppView } from "./app/AppShell";
+
+const TripList = lazy(() => import('./features/trips/TripList').then((m) => ({ default: m.TripList })));
+const CreateTripForm = lazy(() => import('./features/trips/CreateTripForm').then((m) => ({ default: m.CreateTripForm })));
+const Dashboard = lazy(() => import('./features/dashboard').then((m) => ({ default: m.Dashboard })));
+const MatchingPage = lazy(() => import('./features/profile').then((m) => ({ default: m.MatchingPage })));
+const ProfilePage = lazy(() => import('./features/profile').then((m) => ({ default: m.ProfilePage })));
+const ExplorePage = lazy(() => import('./features/explore').then((m) => ({ default: m.ExplorePage })));
 
 // ── Auth storage ──────────────────────────────────────────────────────────────
 
@@ -108,12 +111,14 @@ function App() {
   };
 
   const switchView = (v: View) => {
+    track({ name: "view_changed", props: { from: view, to: v } });
     setView(v);
     setShowCreateForm(false);
     setPrefillDestination(null);
   };
 
   const handlePlanTrip = (destination: string) => {
+    track({ name: "plan_trip_clicked", props: { source_view: view, destination } });
     setPrefillDestination(destination);
     setView("trips");
     setShowCreateForm(true);
@@ -135,32 +140,34 @@ function App() {
         userEmail={user.email}
         onLogout={handleLogout}
       >
-        {view === "dashboard" && <Dashboard trips={trips} />}
-        {view === "explore"   && <ExplorePage token={token!} onPlanTrip={handlePlanTrip} />}
-        {view === "matching"  && <MatchingPage token={token!} trips={trips} />}
-        {view === "profile"   && <ProfilePage trips={trips} userEmail={user.email} />}
+        <Suspense fallback={<div className="text-sm text-flint p-4">Loading section…</div>}>
+          {view === "dashboard" && <Dashboard trips={trips} />}
+          {view === "explore"   && <ExplorePage token={token!} onPlanTrip={handlePlanTrip} />}
+          {view === "matching"  && <MatchingPage token={token!} trips={trips} />}
+          {view === "profile"   && <ProfilePage trips={trips} userEmail={user.email} />}
 
-        {view === "trips" &&
-          (showCreateForm ? (
-            <CreateTripForm
-              token={token!}
-              defaultDestination={prefillDestination ?? undefined}
-              onSuccess={(newTrip) => {
-                setTrips((prev) => [...prev, newTrip]);
-                setShowCreateForm(false);
-                setPrefillDestination(null);
-              }}
-              onCancel={() => {
-                setShowCreateForm(false);
-                setPrefillDestination(null);
-              }}
-            />
-          ) : (
-            <TripList
-              token={token!}
-              onCreateClick={() => setShowCreateForm(true)}
-            />
-          ))}
+          {view === "trips" &&
+            (showCreateForm ? (
+              <CreateTripForm
+                token={token!}
+                defaultDestination={prefillDestination ?? undefined}
+                onSuccess={(newTrip) => {
+                  setTrips((prev) => [...prev, newTrip]);
+                  setShowCreateForm(false);
+                  setPrefillDestination(null);
+                }}
+                onCancel={() => {
+                  setShowCreateForm(false);
+                  setPrefillDestination(null);
+                }}
+              />
+            ) : (
+              <TripList
+                token={token!}
+                onCreateClick={() => setShowCreateForm(true)}
+              />
+            ))}
+        </Suspense>
       </AppShell>
     );
   }
