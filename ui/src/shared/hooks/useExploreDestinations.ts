@@ -33,7 +33,6 @@ export function useExploreDestinations(token: string): UseExploreDestinationsRes
     if (cache) return;
 
     let cancelled = false;
-    setLoading(true);
 
     getExploreDestinations(token)
       .then((data) => {
