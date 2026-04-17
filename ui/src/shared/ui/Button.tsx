@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size    = 'sm' | 'md' | 'lg';
@@ -17,7 +16,6 @@ interface ButtonProps {
   children:   React.ReactNode;
 }
 
-// ── Style maps ────────────────────────────────────────────────────────────────
 
 const variantCls: Record<Variant, string> = {
   primary:   'bg-amber text-white shadow-sm shadow-amber/20 hover:bg-amber-dark',
@@ -32,7 +30,6 @@ const sizeCls: Record<Size, string> = {
   lg: 'px-7 py-3.5 text-sm',
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export const Button = ({
   onClick,

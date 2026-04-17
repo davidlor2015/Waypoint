@@ -92,7 +92,7 @@ export const EditTripModal = ({ token, trip, onSuccess, onClose }: EditTripModal
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-espresso tracking-tight">
-              <span className="mr-2" aria-hidden="true">✏️</span>Edit Trip
+              Edit Trip
             </h2>
             <p className="text-sm text-flint mt-1">Update the details for <span className="font-semibold text-espresso">{trip.title}</span>.</p>
           </div>
@@ -186,7 +186,7 @@ export const EditTripModal = ({ token, trip, onSuccess, onClose }: EditTripModal
                          shadow-sm shadow-amber/25 hover:bg-amber-dark transition-colors duration-150
                          disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {isSubmitting ? 'Saving…' : '💾 Save Changes'}
+              {isSubmitting ? 'Saving…' : 'Save Changes'}
             </motion.button>
 
             <motion.button

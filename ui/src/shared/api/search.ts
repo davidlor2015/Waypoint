@@ -1,6 +1,5 @@
 import { API_URL } from '../../app/config';
 
-// ── Types (mirror app/schemas/search.py) ──────────────────────────────────────
 
 export interface Segment {
   departure_iata: string;
@@ -42,8 +41,6 @@ export interface InspirationResult {
   suggestions: FlightInspiration[];
   test_env: boolean;
 }
-
-// ── API helpers ───────────────────────────────────────────────────────────────
 
 export async function searchFlights(
   token: string,

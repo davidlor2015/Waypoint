@@ -1,115 +1,72 @@
 import { useState, useEffect, useCallback } from 'react';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  getBudget,
+  updateBudgetLimit,
+  createExpense,
+  deleteExpense,
+  type BudgetExpense,
+} from '../../../shared/api/budget';
 
 export type ExpenseCategory = 'food' | 'transport' | 'stay' | 'activities' | 'other';
 
-export interface Expense {
-  id: string;
-  label: string;
-  amount: number;
-  category: ExpenseCategory;
-}
-
-interface BudgetData {
-  limit: number | null;
-  expenses: Expense[];
-}
+export type { BudgetExpense as Expense };
 
 export interface UseBudgetTrackerReturn {
   limit: number | null;
-  expenses: Expense[];
+  expenses: BudgetExpense[];
   totalSpent: number;
   remaining: number | null;
   isOverBudget: boolean;
-  setLimit: (amount: number | null) => void;
-  addExpense: (label: string, amount: number, category: ExpenseCategory) => void;
-  removeExpense: (id: string) => void;
+  loading: boolean;
+  error: string | null;
+  setLimit: (amount: number | null) => Promise<void>;
+  addExpense: (label: string, amount: number, category: ExpenseCategory) => Promise<void>;
+  removeExpense: (id: number) => Promise<void>;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+export function useBudgetTracker(token: string, tripId: number): UseBudgetTrackerReturn {
+  const [limit, setLimitState] = useState<number | null>(null);
+  const [expenses, setExpenses] = useState<BudgetExpense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const VALID_CATEGORIES: ExpenseCategory[] = [
-  'food', 'transport', 'stay', 'activities', 'other',
-];
-
-// ── Type guards ───────────────────────────────────────────────────────────────
-
-function isExpense(value: unknown): value is Expense {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === 'string' &&
-    typeof v.label === 'string' &&
-    typeof v.amount === 'number' &&
-    VALID_CATEGORIES.includes(v.category as ExpenseCategory)
-  );
-}
-
-function isBudgetData(value: unknown): value is BudgetData {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    (v.limit === null || typeof v.limit === 'number') &&
-    Array.isArray(v.expenses)
-  );
-}
-
-// ── Persistence helpers ───────────────────────────────────────────────────────
-
-function storageKey(tripId: number): string {
-  return `budget_${tripId}`;
-}
-
-function loadData(tripId: number): BudgetData {
-  try {
-    const raw = localStorage.getItem(storageKey(tripId));
-    if (!raw) return { limit: null, expenses: [] };
-    const parsed: unknown = JSON.parse(raw);
-    if (!isBudgetData(parsed)) return { limit: null, expenses: [] };
-    return { limit: parsed.limit, expenses: parsed.expenses.filter(isExpense) };
-  } catch {
-    return { limit: null, expenses: [] };
-  }
-}
-
-function saveData(tripId: number, data: BudgetData): void {
-  localStorage.setItem(storageKey(tripId), JSON.stringify(data));
-}
-
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-export function useBudgetTracker(tripId: number): UseBudgetTrackerReturn {
-  const [data, setData] = useState<BudgetData>(() => loadData(tripId));
-
-  // Persist every change
   useEffect(() => {
-    saveData(tripId, data);
-  }, [tripId, data]);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getBudget(token, tripId)
+      .then((data) => {
+        if (!cancelled) {
+          setLimitState(data.limit);
+          setExpenses(data.expenses);
+        }
+      })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, tripId]);
 
-  const totalSpent = data.expenses.reduce((sum, e) => sum + e.amount, 0);
-  const remaining  = data.limit !== null ? data.limit - totalSpent : null;
+  const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const remaining  = limit !== null ? limit - totalSpent : null;
   const isOverBudget = remaining !== null && remaining < 0;
 
-  const setLimit = useCallback((amount: number | null) => {
-    setData((prev) => ({ ...prev, limit: amount }));
-  }, []);
+  const setLimit = useCallback(async (amount: number | null) => {
+    const data = await updateBudgetLimit(token, tripId, amount);
+    setLimitState(data.limit);
+    setExpenses(data.expenses);
+  }, [token, tripId]);
 
-  const addExpense = useCallback((label: string, amount: number, category: ExpenseCategory) => {
+  const addExpense = useCallback(async (label: string, amount: number, category: ExpenseCategory) => {
     const trimmed = label.trim();
     if (!trimmed || amount <= 0) return;
-    setData((prev) => ({
-      ...prev,
-      expenses: [
-        ...prev.expenses,
-        { id: `${Date.now()}-${Math.random()}`, label: trimmed, amount, category },
-      ],
-    }));
-  }, []);
+    const expense = await createExpense(token, tripId, { label: trimmed, amount, category });
+    setExpenses((prev) => [...prev, expense]);
+  }, [token, tripId]);
 
-  const removeExpense = useCallback((id: string) => {
-    setData((prev) => ({ ...prev, expenses: prev.expenses.filter((e) => e.id !== id) }));
-  }, []);
+  const removeExpense = useCallback(async (id: number) => {
+    await deleteExpense(token, tripId, id);
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+  }, [token, tripId]);
 
-  return { limit: data.limit, expenses: data.expenses, totalSpent, remaining, isOverBudget, setLimit, addExpense, removeExpense };
+  return { limit, expenses, totalSpent, remaining, isOverBudget, loading, error, setLimit, addExpense, removeExpense };
 }

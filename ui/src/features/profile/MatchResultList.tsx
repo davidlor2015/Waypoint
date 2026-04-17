@@ -6,7 +6,7 @@ import { MatchResultCard } from './MatchResultCard';
 
 interface MatchResultListProps {
   requestId: number;
-  token: string | null;
+  token: string;
 }
 
 

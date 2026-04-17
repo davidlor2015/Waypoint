@@ -156,7 +156,7 @@ export const MatchingPage = ({ token, trips }: MatchingPageProps) => {
       )}
 
       {!editing && !requestsLoading && (
-        <MatchRequestList trips={trips} requests={requests} />
+        <MatchRequestList token={token} trips={trips} requests={requests} />
       )}
 
       {!editing && requestsLoading && (

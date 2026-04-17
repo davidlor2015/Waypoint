@@ -1,85 +1,64 @@
 import { useState, useEffect, useCallback } from 'react';
+import {
+  getPackingItems,
+  createPackingItem,
+  updatePackingItem,
+  deletePackingItem,
+  type PackingItem,
+} from '../../../shared/api/packing';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface PackingItem {
-  id: string;
-  label: string;
-  checked: boolean;
-}
+export type { PackingItem };
 
 interface UsePackingListReturn {
   items: PackingItem[];
-  addItem: (label: string) => void;
-  toggleItem: (id: string) => void;
-  removeItem: (id: string) => void;
-  clearChecked: () => void;
+  loading: boolean;
+  error: string | null;
+  addItem: (label: string) => Promise<void>;
+  toggleItem: (id: number) => Promise<void>;
+  removeItem: (id: number) => Promise<void>;
+  clearChecked: () => Promise<void>;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+export function usePackingList(token: string, tripId: number): UsePackingListReturn {
+  const [items, setItems] = useState<PackingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-function storageKey(tripId: number): string {
-  return `packing_${tripId}`;
-}
-
-function isPackingItem(value: unknown): value is PackingItem {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === 'string' &&
-    typeof v.label === 'string' &&
-    typeof v.checked === 'boolean'
-  );
-}
-
-function loadItems(tripId: number): PackingItem[] {
-  try {
-    const raw = localStorage.getItem(storageKey(tripId));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPackingItem);
-  } catch {
-    return [];
-  }
-}
-
-function saveItems(tripId: number, items: PackingItem[]): void {
-  localStorage.setItem(storageKey(tripId), JSON.stringify(items));
-}
-
-export function usePackingList(tripId: number): UsePackingListReturn {
-  // Lazy initializer handles the load — no separate load effect needed
-  // since tripId is fixed per PackingList instance in the current UI.
-  const [items, setItems] = useState<PackingItem[]>(() => loadItems(tripId));
-
-  // Persist every change
   useEffect(() => {
-    saveItems(tripId, items);
-  }, [tripId, items]);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    getPackingItems(token, tripId)
+      .then((data) => { if (!cancelled) setItems(data); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, tripId]);
 
-  const addItem = useCallback((label: string) => {
+  const addItem = useCallback(async (label: string) => {
     const trimmed = label.trim();
     if (!trimmed) return;
-    setItems((prev) => [
-      ...prev,
-      { id: `${Date.now()}-${Math.random()}`, label: trimmed, checked: false },
-    ]);
-  }, []);
+    const item = await createPackingItem(token, tripId, trimmed);
+    setItems((prev) => [...prev, item]);
+  }, [token, tripId]);
 
-  const toggleItem = useCallback((id: string) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
-    );
-  }, []);
+  const toggleItem = useCallback(async (id: number) => {
+    const current = items.find((i) => i.id === id);
+    if (!current) return;
+    const updated = await updatePackingItem(token, tripId, id, { checked: !current.checked });
+    setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+  }, [token, tripId, items]);
 
-  const removeItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  }, []);
+  const removeItem = useCallback(async (id: number) => {
+    await deletePackingItem(token, tripId, id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }, [token, tripId]);
 
-  const clearChecked = useCallback(() => {
-    setItems((prev) => prev.filter((item) => !item.checked));
-  }, []);
+  const clearChecked = useCallback(async () => {
+    const checked = items.filter((i) => i.checked);
+    await Promise.all(checked.map((i) => deletePackingItem(token, tripId, i.id)));
+    setItems((prev) => prev.filter((i) => !i.checked));
+  }, [token, tripId, items]);
 
-  return { items, addItem, toggleItem, removeItem, clearChecked };
+  return { items, loading, error, addItem, toggleItem, removeItem, clearChecked };
 }

@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface FormFieldProps {
   id: string;
@@ -10,7 +9,6 @@ interface FormFieldProps {
   children: React.ReactNode;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export const FormField = ({ id, label, hint, error, children }: FormFieldProps) => (
   <div className="flex flex-col gap-1.5">

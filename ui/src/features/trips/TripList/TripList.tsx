@@ -37,6 +37,38 @@ const cardVariants = {
   },
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseItinerary(description: string): Itinerary | null {
+  try {
+    return JSON.parse(description);
+  } catch {
+    const marker = 'DETAILS (JSON): ';
+    const idx = description.indexOf(marker);
+    if (idx !== -1) {
+      try { return JSON.parse(description.slice(idx + marker.length)); } catch { return null; }
+    }
+    return null;
+  }
+}
+
+type TripStatus = 'upcoming' | 'active' | 'past';
+
+const STATUS_CONFIG: Record<TripStatus, { label: string; cls: string }> = {
+  upcoming: { label: 'Upcoming', cls: 'bg-amber/15 text-amber border-amber/30'   },
+  active:   { label: 'Active',   cls: 'bg-olive/10 text-olive border-olive/20'   },
+  past:     { label: 'Past',     cls: 'bg-parchment text-flint border-smoke'      },
+};
+
+function getTripStatus(startIso: string, endIso: string): TripStatus {
+  const now   = Date.now();
+  const start = new Date(startIso).getTime();
+  const end   = new Date(endIso).getTime();
+  if (now < start) return 'upcoming';
+  if (now > end)   return 'past';
+  return 'active';
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 const LoadingSkeleton = () => (
@@ -155,23 +187,11 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [packingIds, setPackingIds]                 = useState<Set<number>>(new Set());
   const [budgetIds, setBudgetIds]                   = useState<Set<number>>(new Set());
   const [mapIds, setMapIds]                         = useState<Set<number>>(new Set());
+  const [confirmDeleteId, setConfirmDeleteId]       = useState<number | null>(null);
 
   const { streams, start: startStream, reset: resetStream } = useStreamingItinerary(token);
 
   // ── Data helpers ───────────────────────────────────────────────────────────
-
-  const parseItinerary = (description: string): Itinerary | null => {
-    try {
-      return JSON.parse(description);
-    } catch {
-      const marker = 'DETAILS (JSON): ';
-      const idx = description.indexOf(marker);
-      if (idx !== -1) {
-        try { return JSON.parse(description.slice(idx + marker.length)); } catch { return null; }
-      }
-      return null;
-    }
-  };
 
   const toggleView = (tripId: number) => {
     setViewingIds((prev) => {
@@ -226,13 +246,14 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   // ── Actions ────────────────────────────────────────────────────────────────
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this trip?')) return;
     setActionError(null);
     try {
       await deleteTrip(token, id);
       setTrips((prev) => prev.filter((t) => t.id !== id));
+      setConfirmDeleteId(null);
     } catch {
       setActionError('Failed to delete trip. Please try again.');
+      setConfirmDeleteId(null);
     }
   };
 
@@ -390,6 +411,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
             const pendingItinerary  = streamItinerary ?? pendingItineraries[trip.id] ?? null;
             const hasSavedItinerary = !!trip.description;
             const savedItinerary    = hasSavedItinerary ? parseItinerary(trip.description!) : null;
+            const tripStatus        = getTripStatus(trip.start_date, trip.end_date);
 
             const startDate = new Date(trip.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             const endDate   = new Date(trip.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -404,17 +426,25 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                 {/* Title row */}
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <h3 className="text-lg font-bold text-espresso leading-tight">{trip.title}</h3>
-                  {hasSavedItinerary && (
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber/20 text-amber text-xs font-bold">
-                      Itinerary saved
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-bold ${STATUS_CONFIG[tripStatus].cls}`}>
+                      {STATUS_CONFIG[tripStatus].label}
                     </span>
-                  )}
+                    {hasSavedItinerary && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber/20 text-amber text-xs font-bold">
+                        Itinerary saved
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Meta */}
                 <div className="flex flex-col gap-1 text-sm text-flint">
                   <span className="font-medium text-espresso">{trip.destination}</span>
                   <span>{startDate} – {endDate}</span>
+                  {trip.notes && (
+                    <span className="text-xs text-flint/70 italic mt-0.5">{trip.notes}</span>
+                  )}
                 </div>
 
                 {/* Per-card stream error */}
@@ -461,7 +491,9 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
 
                     {/* Action buttons — hidden while streaming */}
                     {!isStreaming && (
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className="flex flex-wrap gap-2 pt-1 items-center">
+
+                        {/* Group 1 — AI generation */}
                         <PillButton
                           variant="ocean"
                           onClick={() => startStream(trip.id, trip.notes ?? undefined)}
@@ -469,7 +501,6 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                         >
                           AI Plan
                         </PillButton>
-
                         <PillButton
                           variant="coral"
                           onClick={() => handleGenerateSmart(trip.id)}
@@ -479,39 +510,71 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                           {isGeneratingSmart ? 'Working...' : 'Smart Plan'}
                         </PillButton>
 
+                        <span className="self-center h-5 w-px bg-smoke/70" />
+
+                        {/* Group 2 — view tools */}
                         {savedItinerary && (
                           <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
-                            {isViewing ? 'Hide' : 'View Itinerary'}
+                            {isViewing ? 'Hide Itinerary' : 'View Itinerary'}
                           </PillButton>
                         )}
-
                         {savedItinerary && (
                           <PillButton variant="ghost" onClick={() => toggleMap(trip.id)}>
                             {isShowingMap ? 'Hide Map' : 'Map'}
                           </PillButton>
                         )}
-
                         <PillButton variant="ghost" onClick={() => togglePacking(trip.id)}>
                           {isShowingPacking ? 'Hide Packing' : 'Packing List'}
                         </PillButton>
-
                         <PillButton variant="ghost" onClick={() => toggleBudget(trip.id)}>
                           {isShowingBudget ? 'Hide Budget' : 'Budget'}
                         </PillButton>
 
+                        <span className="self-center h-5 w-px bg-smoke/70" />
+
+                        {/* Group 3 — management */}
                         <PillButton variant="ghost" onClick={() => setEditingTrip(trip)}>
                           Edit
                         </PillButton>
 
-                        <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
-                          Delete
-                        </PillButton>
+                        <AnimatePresence mode="wait" initial={false}>
+                          {confirmDeleteId === trip.id ? (
+                            <motion.div
+                              key="confirm"
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              transition={{ duration: 0.15 }}
+                              className="flex items-center gap-2"
+                            >
+                              <span className="text-sm font-semibold text-danger">Delete trip?</span>
+                              <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
+                                Yes, delete
+                              </PillButton>
+                              <PillButton variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                                Cancel
+                              </PillButton>
+                            </motion.div>
+                          ) : (
+                            <motion.div
+                              key="idle"
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              transition={{ duration: 0.15 }}
+                            >
+                              <PillButton variant="danger" onClick={() => setConfirmDeleteId(trip.id)}>
+                                Delete
+                              </PillButton>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     )}
 
                     {isShowingMap     && savedItinerary && <ItineraryMap itinerary={savedItinerary} />}
-                    {isShowingPacking && <PackingList tripId={trip.id} />}
-                    {isShowingBudget  && <BudgetTracker tripId={trip.id} />}
+                    {isShowingPacking && <PackingList token={token} tripId={trip.id} />}
+                    {isShowingBudget  && <BudgetTracker token={token} tripId={trip.id} />}
                   </>
                 )}
               </motion.li>

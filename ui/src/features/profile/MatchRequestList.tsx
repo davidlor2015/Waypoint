@@ -7,6 +7,7 @@ import { MatchRequestCard } from './MatchRequestCard';
 
 
 interface MatchRequestListProps {
+  token: string;
   trips: Trip[];
   requests: MatchRequest[];
 }
@@ -16,7 +17,7 @@ const listVariants = {
   show: { transition: { staggerChildren: 0.06 } },
 };
 
-export const MatchRequestList = ({ trips, requests }: MatchRequestListProps) => {
+export const MatchRequestList = ({ token, trips, requests }: MatchRequestListProps) => {
   const [selectedTripId, setSelectedTripId] = useState<number | ''>('');
   const [items, setItems] = useState<MatchRequest[]>(requests);
   const [submitting, setSubmitting] = useState(false);
@@ -40,12 +41,6 @@ export const MatchRequestList = ({ trips, requests }: MatchRequestListProps) => 
 
   const handleOpenRequest = async () => {
     if (!selectedTripId) {
-      return;
-    }
-
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      setError('No access token provided');
       return;
     }
 
@@ -77,7 +72,7 @@ export const MatchRequestList = ({ trips, requests }: MatchRequestListProps) => 
           <select
             value={selectedTripId}
             onChange={(e) => setSelectedTripId(e.target.value ? Number(e.target.value) : '')}
-            className="flex-1 px-4 py-3 rounded-xl border border-smoke bg-white text-sm text-espresso
+            className="flex-1 px-4 py-3 rounded-full border border-smoke bg-white text-sm text-espresso
                        focus:outline-none focus:ring-2 focus:ring-amber/40 focus:border-amber
                        transition-all duration-150"
           >
@@ -132,6 +127,7 @@ export const MatchRequestList = ({ trips, requests }: MatchRequestListProps) => 
               {items.map((request) => (
                 <MatchRequestCard
                   key={request.id}
+                  token={token}
                   request={request}
                   trip={trips.find((trip) => trip.id === request.trip_id)}
                   onClosed={(requestId) =>

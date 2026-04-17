@@ -23,6 +23,8 @@ A full-stack web application for planning trips with AI-generated itineraries. U
   - [Matching](#matching)
   - [AI](#ai)
   - [Search](#search)
+  - [Packing](#packing)
+  - [Budget](#budget)
 
 ## Overview
 
@@ -33,8 +35,8 @@ Waypoint lets users:
 - Generate day-by-day itineraries via a local LLM (Ollama) or a rule-based engine using live POI data
 - Preview a generated itinerary before saving it, then apply it to the trip record
 - View saved itineraries stored relationally (per-day, per-event) in the database
-- Track per-trip packing lists and budget expenses, persisted in localStorage
-- Browse curated destination cards on an Explore page and launch trip planning directly from a card
+- Track per-trip packing lists and budget expenses, persisted to the database per user
+- Browse destination cards on an Explore page — popular picks by default, with region filters (Europe, Asia, Americas, Africa, Oceania) that load curated city lists; launch trip planning directly from any card
 - Search live flight offers and get destination inspiration via the Amadeus sandbox API (clearly labelled as test data)
 - View per-destination quality scores (housing, cost of living, safety, etc.) sourced from the Teleport public API
 - View a gamified traveller profile with stats, earned badges, and destination history
@@ -91,6 +93,7 @@ Waypoint lets users:
 | Nominatim (OSM)                 | Free geocoding (city name to lat/lon)                 |
 | Amadeus (sandbox)               | Flight search and destination inspiration (test data) |
 | Teleport API                    | City quality-of-life scores — public, no key needed   |
+| Wikipedia REST API              | City photos fetched per destination card — public, no key needed |
 
 ## Architecture
 
@@ -134,6 +137,8 @@ travel-planner/
 |   |           +-- ai.py             # /v1/ai generation endpoints (rate-limited)
 |   |           +-- search.py         # /v1/search flight and inspiration endpoints (Amadeus)
 |   |           +-- matching.py       # /v1/matching profile, requests, and match results
+|   |           +-- packing.py        # /v1/trips/{id}/packing CRUD
+|   |           +-- budget.py         # /v1/trips/{id}/budget limit + expenses CRUD
 |   +-- core/
 |   |   +-- config.py                 # Settings loaded from environment
 |   |   +-- limiter.py                # slowapi Limiter singleton
@@ -148,6 +153,8 @@ travel-planner/
 |   |   +-- travel_profile.py
 |   |   +-- match_request.py
 |   |   +-- match_result.py
+|   |   +-- packing_item.py           # PackingItem (per-trip checklist rows)
+|   |   +-- budget_expense.py         # BudgetExpense (per-trip expense rows)
 |   +-- repositories/
 |   |   +-- base.py                   # Generic BaseRepository[T]
 |   |   +-- user_repository.py
@@ -164,6 +171,8 @@ travel-planner/
 |   |   +-- itinerary.py              # ItineraryEventRead, ItineraryDayRead
 |   |   +-- search.py                 # FlightOffer, FlightSearchResult, InspirationResult
 |   |   +-- matching.py               # TravelProfile, MatchRequest, MatchResult API schemas
+|   |   +-- packing.py                # PackingItemCreate, PackingItemUpdate, PackingItemResponse
+|   |   +-- budget.py                 # BudgetExpenseCreate/Update/Response, BudgetResponse
 |   +-- services/
 |       +-- auth_service.py
 |       +-- trip_service.py
@@ -260,13 +269,19 @@ travel-planner/
             |   +-- ai.ts             # planItinerarySmart, applyItinerary, timeout constants
             |   +-- search.ts         # searchFlights, getInspirations; typed response interfaces
             |   +-- matching.ts       # typed matching profile / request / result client
+            |   +-- packing.ts        # getPackingItems, createPackingItem, updatePackingItem, deletePackingItem
+            |   +-- budget.ts         # getBudget, updateBudgetLimit, createExpense, updateExpense, deleteExpense
             +-- hooks/
-            |   +-- useGeocode.ts           # Nominatim geocoding with module-level session cache
-            |   +-- useStreamingItinerary.ts # SSE fetch stream reader, per-trip state management
-            |   +-- useTeleportScore.ts      # Teleport city quality score (public API, no key)
+            |   +-- useGeocode.ts              # Nominatim geocoding with module-level session cache
+            |   +-- useStreamingItinerary.ts   # SSE fetch stream reader, per-trip state management
+            |   +-- useTeleportScore.ts        # Teleport city quality score (public API, no key)
+            |   +-- useAllTeleportScores.ts    # Batch Teleport scores keyed by slug
+            |   +-- useTeleportCityImage.ts    # Wikipedia REST API city photo; module-level cache
+            |   +-- useTeleportRegionCities.ts # Static city lists per region
             +-- ui/
                 +-- FormField.tsx     # Shared label + animated error wrapper
                 +-- inputCls.ts       # Shared input className helper
+                +-- ErrorBoundary.tsx # React error boundary
 ```
 
 ## Backend Design
@@ -365,6 +380,11 @@ To enforce DRY across feature components, reusable UI elements live in `shared/`
 - `shared/ui/inputCls.ts` — shared input className helper (border, focus ring, error state). Kept in its own file so `FormField.tsx` exports only a component and satisfies the Fast Refresh constraint.
 - `shared/hooks/useGeocode.ts` — geocodes destination strings via Nominatim. Results are stored in a module-level `Map` so the same city is never fetched twice within a session, and requests are spaced 1.1 s apart to respect Nominatim's rate limit.
 - `shared/hooks/useStreamingItinerary.ts` — manages one SSE fetch stream per trip. Parses `token`, `complete`, and `error` events from the server, accumulates raw text for live display, and exposes `start()` / `reset()` per trip ID.
+- `shared/hooks/useTeleportCityImage.ts` — fetches a city photo from the Wikipedia REST API (`/api/rest_v1/page/summary/{city}`). Prefers `originalimage.source`, falls back to `thumbnail.source`. Results are stored in a module-level cache; CORS-enabled, no key required.
+- `shared/hooks/useTeleportRegionCities.ts` — returns the curated static city list for a given region (`europe | asia | americas | africa | oceania`). Synchronous; no network calls. Popular region returns an empty list (the caller supplies its own curated set).
+- `shared/hooks/useAllTeleportScores.ts` — batch-fetches Teleport quality scores for a list of slugs, keyed by slug in a `ReadonlyMap`. Uses the direct `/api/urban_areas/slug:{slug}/scores/` endpoint.
+- `shared/api/packing.ts` — typed REST client for all packing-list endpoints under `/v1/trips/{tripId}/packing`.
+- `shared/api/budget.ts` — typed REST client for all budget endpoints under `/v1/trips/{tripId}/budget`.
 
 ### AppShell
 
@@ -393,9 +413,11 @@ features/
     Dashboard.tsx        stat cards with staggered entrance, dual Recharts bar charts
     DestinationsMap.tsx  Leaflet map with one pin per unique destination, OSM tiles
   explore/
-    ExplorePage.tsx      FlightSearch panel at top (Amadeus); 16 curated destination cards each
-                         enriched with a live Teleport quality score badge; search and tag filter;
-                         Plan CTA pre-fills CreateTripForm and switches tab automatically
+    ExplorePage.tsx      FlightSearch panel at top (Amadeus); Popular region shows 20 curated
+                         destination cards by default; region filter tabs (Europe, Asia, Americas,
+                         Africa, Oceania) swap in static curated city lists; each card fetches its
+                         photo from the Wikipedia REST API and a quality score badge from the
+                         Teleport API; Plan CTA pre-fills CreateTripForm and switches tab automatically
   search/
     FlightSearch.tsx     two-tab panel: "Search Flights" (origin/dest/date/adults) and "Get Inspired"
                          (cheapest destinations from an origin); prominent "Amadeus Test Environment"
@@ -426,12 +448,13 @@ features/
                          shows coloured day pills when itinerary spans multiple days;
                          useItineraryPins hook resolves coordinates from item.lat/lon first,
                          falls back to Nominatim geocoding for plain location strings
-    PackingList/         per-trip checklist persisted in localStorage; clay-accented panel;
-                         progress bar, AnimatePresence item enter/exit; usePackingList hook
-    BudgetTracker/       per-trip expense tracker persisted in localStorage; amber-accented;
-                         category pills (Food/Transport/Stay/Activities/Other); progress bar
-                         transitions olive → amber → danger as spend approaches limit;
-                         useBudgetTracker hook
+    PackingList/         per-trip checklist persisted in the database via REST API; clay-accented
+                         panel; progress bar, AnimatePresence item enter/exit; usePackingList hook
+                         (API-backed, token + tripId params)
+    BudgetTracker/       per-trip expense tracker persisted in the database via REST API;
+                         amber-accented; category pills (Food/Transport/Stay/Activities/Other);
+                         progress bar transitions olive → amber → danger as spend approaches limit;
+                         useBudgetTracker hook (API-backed, token + tripId params)
     schemas/
       tripSchema.ts      Zod schema mirroring backend TripCreate
 ```
@@ -484,9 +507,14 @@ shared/api/trips.ts               -> getTrips(), createTrip(), updateTrip(), del
 shared/api/ai.ts                  -> planItinerarySmart(), applyItinerary()
 shared/api/search.ts              -> searchFlights(), getInspirations()
 shared/api/matching.ts            -> getProfile(), upsertProfile(), getRequests(), openRequest(), closeRequest(), getMatches()
-shared/hooks/useStreamingItinerary -> manages SSE fetch stream for AI Plan
-shared/hooks/useGeocode           -> geocodes destination strings for the map
-shared/hooks/useTeleportScore     -> fetches Teleport city quality score per destination card
+shared/api/packing.ts             -> getPackingItems(), createPackingItem(), updatePackingItem(), deletePackingItem()
+shared/api/budget.ts              -> getBudget(), updateBudgetLimit(), createExpense(), updateExpense(), deleteExpense()
+shared/hooks/useStreamingItinerary    -> manages SSE fetch stream for AI Plan
+shared/hooks/useGeocode               -> geocodes destination strings for the map
+shared/hooks/useTeleportScore         -> fetches Teleport city quality score per destination card
+shared/hooks/useAllTeleportScores     -> batch-fetches Teleport scores keyed by slug
+shared/hooks/useTeleportCityImage     -> fetches city photo from Wikipedia REST API; module-level cache
+shared/hooks/useTeleportRegionCities  -> returns static curated city list for a given region
 ```
 
 ## AI Integration
@@ -676,6 +704,7 @@ Core tables managed via Alembic migrations:
 | description     | TEXT     | Legacy itinerary string                        |
 | notes           | TEXT     | User interests/notes                           |
 | is_discoverable | BOOLEAN  | Whether trip can appear in matching candidates |
+| budget_limit    | FLOAT    | Optional per-trip budget cap (nullable)        |
 | created_at      | DATETIME | Auto-set                                       |
 
 **itinerary_days**
@@ -740,6 +769,29 @@ There is a partial unique index preventing duplicate open requests for the same 
 
 `match_results` also enforces `UNIQUE(request_a_id, request_b_id)`.
 
+**packing_items**
+
+| Column     | Type     | Notes                           |
+| ---------- | -------- | ------------------------------- |
+| id         | INT      | Primary key                     |
+| trip_id    | INT      | FK to trips.id (CASCADE DELETE) |
+| label      | VARCHAR  | Item description                |
+| checked    | BOOLEAN  | Packed status, default false    |
+| created_at | DATETIME | Auto-set                        |
+
+**budget_expenses**
+
+| Column     | Type     | Notes                                                          |
+| ---------- | -------- | -------------------------------------------------------------- |
+| id         | INT      | Primary key                                                    |
+| trip_id    | INT      | FK to trips.id (CASCADE DELETE)                                |
+| label      | VARCHAR  | Expense description                                            |
+| amount     | FLOAT    | Amount spent                                                   |
+| category   | VARCHAR  | One of: food, transport, stay, activities, other               |
+| created_at | DATETIME | Auto-set                                                       |
+
+The per-trip budget limit is stored directly on the `trips` table as `budget_limit` (nullable float).
+
 ### Migrations
 
 | File           | Description                                                                   |
@@ -748,6 +800,7 @@ There is a partial unique index preventing duplicate open requests for the same 
 | `70fee314e52b` | Add trips table                                                               |
 | `3f8a1b9c2d4e` | Add itinerary_days and itinerary_events tables                                |
 | `8d7f1c2a9b4e` | Add travel_profiles, match_requests, match_results, and trips.is_discoverable |
+| `c1d2e3f4a5b6` | Add packing_items and budget_expenses tables; add budget_limit to trips       |
 
 ## Authentication and Security
 
@@ -1014,5 +1067,24 @@ All search endpoints use the **Amadeus sandbox** (test data, not live availabili
 | `max_price` | No       | Optional upper price limit in USD |
 
 Both endpoints return `HTTP 503` with a descriptive message when `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` are not configured.
+
+### Packing
+
+| Method | Endpoint                                    | Auth | Description                          |
+| ------ | ------------------------------------------- | ---- | ------------------------------------ |
+| GET    | `/v1/trips/{id}/packing/`                   | JWT  | List all packing items for a trip    |
+| POST   | `/v1/trips/{id}/packing/`                   | JWT  | Add a new packing item               |
+| PATCH  | `/v1/trips/{id}/packing/{item_id}`          | JWT  | Update item label or checked status  |
+| DELETE | `/v1/trips/{id}/packing/{item_id}`          | JWT  | Remove a packing item                |
+
+### Budget
+
+| Method | Endpoint                                         | Auth | Description                                   |
+| ------ | ------------------------------------------------ | ---- | --------------------------------------------- |
+| GET    | `/v1/trips/{id}/budget/`                         | JWT  | Get budget limit and all expenses for a trip  |
+| PATCH  | `/v1/trips/{id}/budget/limit`                    | JWT  | Set or update the trip budget limit           |
+| POST   | `/v1/trips/{id}/budget/expenses`                 | JWT  | Add an expense                                |
+| PATCH  | `/v1/trips/{id}/budget/expenses/{expense_id}`    | JWT  | Update an expense                             |
+| DELETE | `/v1/trips/{id}/budget/expenses/{expense_id}`    | JWT  | Delete an expense                             |
 
 > **Teleport city scores** are fetched directly from the public Teleport API (`api.teleport.org`) by the frontend — no backend endpoint or API key required. Each curated destination card loads its score independently and degrades silently if the city is not found in the Teleport dataset.

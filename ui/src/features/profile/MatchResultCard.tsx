@@ -4,6 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { MatchResult } from '../../shared/api/matching';
 import { ScoreBar } from './ScoreBar';
 
+function displayName(email: string): string {
+  const local = email.split('@')[0] ?? email;
+  return local
+    .split(/[._-]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 
 interface MatchResultCardProps {
   result: MatchResult;
@@ -28,7 +36,8 @@ export const MatchResultCard = ({ result }: MatchResultCardProps) => {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-base font-bold text-espresso">{result.matched_user.email}</p>
+          <p className="text-base font-bold text-espresso">{displayName(result.matched_user.email)}</p>
+          <p className="text-xs text-flint/70 mt-0.5">{result.matched_user.email}</p>
           <p className="text-sm text-flint mt-1">{result.matched_trip.destination}</p>
           <p className="text-xs text-flint/80 mt-1">
             {result.matched_trip.start_date} to {result.matched_trip.end_date}

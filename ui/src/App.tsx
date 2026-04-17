@@ -35,7 +35,6 @@ function readStoredUser(): UserProfile | null {
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
 
 type View = AppView;
 
@@ -54,7 +53,6 @@ function App() {
   // Avoids calling setState synchronously inside an effect.
   const loading = Boolean(token && !user);
 
-  // ── Auth revalidation ────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!token) return;
@@ -94,15 +92,11 @@ function App() {
   // Intentionally omits `user`: this effect should only re-run when the token
   // changes (login / logout), not each time the background refresh updates user.
 
-  // ── Trip fetch ───────────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (token && user) {
       getTrips(token).then(setTrips).catch(console.error);
     }
   }, [token, user]);
-
-  // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleLoginSuccess = (newToken: string) => setToken(newToken);
 
@@ -125,7 +119,6 @@ function App() {
     setShowCreateForm(true);
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────────
 
   if (loading)
     return (

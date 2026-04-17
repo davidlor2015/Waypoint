@@ -5,6 +5,7 @@ import { usePackingList } from './usePackingList';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface PackingListProps {
+  token: string;
   tripId: number;
 }
 
@@ -18,8 +19,8 @@ const itemVariants = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const PackingList = ({ tripId }: PackingListProps) => {
-  const { items, addItem, toggleItem, removeItem, clearChecked } = usePackingList(tripId);
+export const PackingList = ({ token, tripId }: PackingListProps) => {
+  const { items, loading, addItem, toggleItem, removeItem, clearChecked } = usePackingList(token, tripId);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +47,7 @@ export const PackingList = ({ tripId }: PackingListProps) => {
           <div>
             <h4 className="text-base font-bold text-espresso">Packing List</h4>
             <p className="text-xs text-flint mt-0.5">
-              {total === 0 ? 'Nothing added yet.' : `${checkedCount} of ${total} packed`}
+              {loading ? 'Loading…' : total === 0 ? 'Nothing added yet.' : `${checkedCount} of ${total} packed`}
             </p>
           </div>
 

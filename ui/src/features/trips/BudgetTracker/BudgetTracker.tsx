@@ -4,6 +4,7 @@ import { useBudgetTracker, type ExpenseCategory } from './useBudgetTracker';
 
 
 interface BudgetTrackerProps {
+  token: string;
   tripId: number;
 }
 
@@ -35,17 +36,17 @@ function progressBarCls(pct: number): string {
 }
 
 
-export const BudgetTracker = ({ tripId }: BudgetTrackerProps) => {
+export const BudgetTracker = ({ token, tripId }: BudgetTrackerProps) => {
   const {
-    limit, expenses, totalSpent, remaining, isOverBudget,
+    limit, expenses, totalSpent, remaining, isOverBudget, loading,
     setLimit, addExpense, removeExpense,
-  } = useBudgetTracker(tripId);
+  } = useBudgetTracker(token, tripId);
 
   const [draftLabel,    setDraftLabel]    = useState('');
   const [draftAmount,   setDraftAmount]   = useState('');
   const [draftCategory, setDraftCategory] = useState<ExpenseCategory>('other');
-  const [draftLimit,    setDraftLimit]    = useState(limit !== null ? String(limit) : '');
-  const [editingLimit,  setEditingLimit]  = useState(limit === null);
+  const [draftLimit,    setDraftLimit]    = useState('');
+  const [editingLimit,  setEditingLimit]  = useState(false);
 
 
   const spentPct   = limit ? Math.min((totalSpent / limit) * 100, 100) : 0;
@@ -88,7 +89,9 @@ export const BudgetTracker = ({ tripId }: BudgetTrackerProps) => {
           {/* Title + budget status */}
           <div>
             <h4 className="text-base font-bold text-espresso">Budget Tracker</h4>
-            {limit !== null && !editingLimit && (
+            {loading ? (
+              <p className="text-xs text-flint mt-0.5">Loading…</p>
+            ) : limit !== null && !editingLimit && (
               <p className={[
                 'text-xs font-semibold mt-0.5',
                 isOverBudget ? 'text-danger' : 'text-flint',
@@ -187,7 +190,7 @@ export const BudgetTracker = ({ tripId }: BudgetTrackerProps) => {
         <ul className="divide-y divide-amber/10 list-none p-0 m-0">
           <AnimatePresence initial={false}>
             {[...expenses].reverse().map((expense) => {
-              const meta = categoryMeta(expense.category);
+              const meta = categoryMeta(expense.category as ExpenseCategory);
               return (
                 <motion.li
                   key={expense.id}

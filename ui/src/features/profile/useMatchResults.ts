@@ -11,7 +11,7 @@ interface UseMatchResultsResult {
 
 
 export function useMatchResults(
-  token: string | null,
+  token: string,
   requestId: number | null,
 ): UseMatchResultsResult {
   const [results, setResults] = useState<MatchResult[]>([]);
@@ -22,15 +22,6 @@ export function useMatchResults(
     let cancelled = false;
 
     const loadResults = async () => {
-      if (!token) {
-        if (!cancelled) {
-          setResults([]);
-          setLoading(false);
-          setError('No access token provided');
-        }
-        return;
-      }
-
       if (requestId === null) {
         if (!cancelled) {
           setResults([]);

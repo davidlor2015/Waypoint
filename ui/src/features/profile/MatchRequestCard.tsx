@@ -5,22 +5,26 @@ import { closeRequest as closeMatchRequest, type MatchRequest } from '../../shar
 import type { Trip } from '../../shared/api/trips';
 import { MatchResultList } from './MatchResultList';
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 
 interface MatchRequestCardProps {
+  token: string;
   request: MatchRequest;
   trip?: Trip;
   onClosed?: (requestId: number) => void;
 }
 
 
-export const MatchRequestCard = ({ request, trip, onClosed }: MatchRequestCardProps) => {
-  const token = localStorage.getItem('access_token');
+export const MatchRequestCard = ({ token, request, trip, onClosed }: MatchRequestCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
 
   const handleClose = async () => {
-    if (!token || closing || request.status === 'closed') {
+    if (closing || request.status === 'closed') {
       return;
     }
 
@@ -52,7 +56,7 @@ export const MatchRequestCard = ({ request, trip, onClosed }: MatchRequestCardPr
           </p>
           {trip ? (
             <p className="text-sm text-flint mt-1">
-              {trip.start_date} to {trip.end_date}
+              {formatDate(trip.start_date)} – {formatDate(trip.end_date)}
             </p>
           ) : (
             <p className="text-sm text-flint mt-1">Trip #{request.trip_id}</p>

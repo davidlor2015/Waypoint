@@ -150,7 +150,7 @@ export const TravelProfileForm = ({
     >
       <div className="mb-6">
         <h2 className="text-xl sm:text-2xl font-bold text-espresso tracking-tight">
-          <span className="mr-2" aria-hidden="true">🧭</span>Matching Profile
+          Matching Profile
         </h2>
         <p className="text-sm text-flint mt-1">
           Tell us how you like to travel so we can find better trip matches.

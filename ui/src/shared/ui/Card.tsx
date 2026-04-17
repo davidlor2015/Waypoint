@@ -1,4 +1,4 @@
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 type Padding = 'none' | 'sm' | 'md' | 'lg';
 
@@ -8,7 +8,6 @@ interface CardProps {
   className?: string;
 }
 
-// ── Style map ─────────────────────────────────────────────────────────────────
 
 const paddingCls: Record<Padding, string> = {
   none: '',
@@ -16,8 +15,6 @@ const paddingCls: Record<Padding, string> = {
   md:   'p-6',
   lg:   'p-8',
 };
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 /**
  * The base card surface used across all feature views.
