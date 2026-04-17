@@ -549,13 +549,12 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
     });
 
     if (sort === 'az') return [...base].sort((a, b) => a.city.localeCompare(b.city));
-    if (sort === 'score-desc') return [...base].sort((a, b) => (scoresBySlug.get(b.id) ?? -1) - (scoresBySlug.get(a.id) ?? -1));
     return base;
-  }, [destinations, search, activeTag, showSavedOnly, savedIds, sort, scoresBySlug]);
+  }, [destinations, search, activeTag, showSavedOnly, savedIds, sort]);
 
   const availableSorts: SortOption[] = activeRegion === 'popular'
-    ? ['default', 'az', 'score-desc']
-    : ['az', 'score-desc'];
+    ? ['default', 'az']
+    : ['az'];
 
   return (
     <div className="space-y-8">
@@ -581,7 +580,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
       {/* Featured hero — always from popular set */}
       <FeaturedHero
         destination={featured}
-        score={scoresBySlug.get(featured.id)}
+        score={undefined}
         onPlanTrip={onPlanTrip}
         isSaved={isSaved(featured.id)}
         onToggleWishlist={() => toggle(featured.id)}
@@ -724,7 +723,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
             <DestinationCard
               key={dest.id}
               destination={dest}
-              score={scoresBySlug.get(dest.id)}
+              score={undefined}
               onPlanTrip={onPlanTrip}
               onViewDetails={setSelectedDest}
               isSaved={isSaved(dest.id)}
