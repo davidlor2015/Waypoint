@@ -1,13 +1,12 @@
 import { motion } from 'framer-motion';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 interface LandingPageProps {
   onGetStarted: () => void;
   onSignIn: () => void;
 }
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
 
 interface IconProps { className?: string; }
 
@@ -42,7 +41,7 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-// ── Animation variants ────────────────────────────────────────────────────────
+
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -51,32 +50,32 @@ const fadeUp = {
 
 const stagger = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.1 } },
+  show: { transition: { staggerChildren: 0.12 } },
 };
 
-// ── Static data ───────────────────────────────────────────────────────────────
+
 
 const FEATURES = [
   {
-    icon:    <SparkleIcon />,
-    iconBg:  'bg-clay/10 text-clay',
-    title:   'Itinerary Generation',
-    description:
-      'Stream a day-by-day plan live or use the smart rule-based engine powered by real POI data. Preview before you save anything.',
+    icon:        <SparkleIcon />,
+    iconBg:      'bg-clay/10 text-clay',
+    accentLine:  'bg-clay',
+    title:       'Itinerary Generation',
+    description: 'Stream a day-by-day plan live or use the smart rule-based engine powered by real POI data. Preview before you save anything.',
   },
   {
-    icon:    <ClipboardIcon />,
-    iconBg:  'bg-amber/12 text-amber',
-    title:   'Packing Lists & Budgets',
-    description:
-      'Every trip gets its own checklist and expense tracker. Set a spending limit, log costs by category, and track progress with a live progress bar.',
+    icon:        <ClipboardIcon />,
+    iconBg:      'bg-amber/10 text-amber',
+    accentLine:  'bg-amber',
+    title:       'Packing Lists & Budgets',
+    description: 'Every trip gets its own checklist and expense tracker. Set a spending limit, log costs by category, and track progress with a live progress bar.',
   },
   {
-    icon:    <GlobeIcon />,
-    iconBg:  'bg-espresso/8 text-espresso',
-    title:   'Explore & Flight Search',
-    description:
-      'Browse curated destinations enriched with live Teleport quality scores, then search flight offers and get destination inspiration via the Amadeus API.',
+    icon:        <GlobeIcon />,
+    iconBg:      'bg-olive/10 text-olive',
+    accentLine:  'bg-olive',
+    title:       'Explore & Flight Search',
+    description: 'Browse curated destinations enriched with live Teleport quality scores, then search flight offers and get destination inspiration via the Amadeus API.',
   },
 ];
 
@@ -98,33 +97,43 @@ const STEPS = [
   },
 ];
 
-// ── Sub-components ────────────────────────────────────────────────────────────
 
-const FeatureCard = ({ icon, iconBg, title, description }: typeof FEATURES[number]) => (
+
+const FeatureCard = ({ icon, iconBg, accentLine, title, description }: typeof FEATURES[number]) => (
   <motion.div
     variants={fadeUp}
-    className="bg-white rounded-2xl border border-smoke p-7 flex flex-col gap-5"
+    className="group bg-parchment/70 hover:bg-parchment rounded-2xl border border-smoke/70
+               p-8 flex flex-col gap-6 transition-colors duration-300"
   >
-    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+    <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
       {icon}
     </div>
-    <div>
-      <h3 className="text-base text-espresso">{title}</h3>
-      <p className="text-sm text-muted mt-2 leading-relaxed">{description}</p>
+    <div className="flex flex-col gap-2">
+      <div className={`w-6 h-0.5 rounded-full ${accentLine} opacity-60`} />
+      <h3 className="text-base text-espresso tracking-[-0.02em]">{title}</h3>
+      <p className="text-sm text-muted leading-relaxed">{description}</p>
     </div>
   </motion.div>
 );
 
+
 const Step = ({ number, title, body, last }: typeof STEPS[number] & { last: boolean }) => (
   <div className="flex gap-5 items-start">
     <div className="flex flex-col items-center flex-shrink-0">
-      <div className="w-10 h-10 rounded-full bg-amber text-white text-sm font-bold flex items-center justify-center shadow-sm shadow-amber/20">
+      <div
+        className="w-11 h-11 rounded-full text-white text-sm font-bold flex items-center
+                   justify-center shadow-md shadow-clay/20"
+        style={{ background: 'linear-gradient(135deg, #8B5A3E 0%, #7C2D12 100%)' }}
+      >
         {number}
       </div>
-      {!last && <div className="w-px flex-1 bg-smoke mt-2 min-h-[36px]" />}
+      {!last && (
+        <div className="w-px flex-1 mt-2 min-h-[40px]"
+             style={{ background: 'linear-gradient(to bottom, #8B5A3E33, #E7E5E4)' }} />
+      )}
     </div>
-    <div className="pb-9">
-      <p className="text-sm font-semibold text-espresso tracking-[-0.01em]">{title}</p>
+    <div className="pb-10">
+      <p className="text-sm font-semibold text-espresso tracking-[-0.015em]">{title}</p>
       <p className="text-sm text-muted mt-1.5 leading-relaxed">{body}</p>
     </div>
   </div>
@@ -136,8 +145,8 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
   <div className="min-h-screen bg-ivory font-sans overflow-x-hidden">
 
     {/* ── Navbar ── */}
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-smoke">
-      <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-50 bg-ivory/95 backdrop-blur-md border-b border-smoke">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
 
         <div className="flex items-center gap-2 select-none">
           <PlaneIcon className="w-4 h-4 text-clay" />
@@ -149,7 +158,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         <button
           onClick={onSignIn}
           className="px-4 py-1.5 rounded-full text-sm font-medium text-flint border border-smoke
-                     hover:border-espresso hover:text-espresso transition-colors duration-200 cursor-pointer"
+                     hover:border-clay hover:text-clay transition-colors duration-200 cursor-pointer"
         >
           Sign in
         </button>
@@ -168,13 +177,19 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         className="absolute inset-0 w-full h-full object-cover object-center"
       />
 
-      {/* Layer 2 — uniform dark tint: grounds the image and lifts contrast */}
-      <div className="absolute inset-0 bg-black/20 pointer-events-none" />
+      {/* Layer 2 — warm sepia base tint */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'rgba(41, 37, 36, 0.22)' }} />
 
-      {/* Layer 3 — centre-weighted gradient: darkest where the text lives */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/45 to-black/20 pointer-events-none" />
+      {/* Layer 3 — warm sepia gradient: deepest at centre where text lives */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'linear-gradient(to bottom, rgba(124,45,18,0.08) 0%, rgba(41,37,36,0.52) 50%, rgba(124,45,18,0.18) 100%)' }} />
 
-      {/* Layer 4 — content */}
+      {/* Layer 4 — subtle warm vignette at edges */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(41,37,36,0.28) 100%)' }} />
+
+      {/* Layer 5 — content */}
       <motion.div
         variants={stagger}
         initial="hidden"
@@ -185,7 +200,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         {/* Eyebrow */}
         <motion.p
           variants={fadeUp}
-          className="text-xs font-semibold text-white/70 uppercase tracking-[0.18em]"
+          className="text-xs font-semibold text-white/65 uppercase tracking-[0.2em]"
         >
           Travel planning, reimagined
         </motion.p>
@@ -193,7 +208,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         {/* Headline */}
         <motion.h1
           variants={fadeUp}
-          className="text-5xl sm:text-6xl lg:text-7xl font-semibold text-white drop-shadow-sm"
+          className="text-5xl sm:text-6xl lg:text-7xl font-semibold text-white drop-shadow-sm tracking-[-0.035em]"
         >
           Plan your next<br />
           <span className="text-amber">adventure.</span>
@@ -202,7 +217,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         {/* Body */}
         <motion.p
           variants={fadeUp}
-          className="text-base text-white/75 leading-relaxed max-w-lg mx-auto"
+          className="text-base text-white/72 leading-relaxed max-w-lg mx-auto"
         >
           Generate day-by-day itineraries, manage packing lists and budgets per trip,
           and discover your next destination — all in one place.
@@ -214,9 +229,10 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
             onClick={onGetStarted}
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-amber text-white
-                       text-sm font-semibold shadow-lg shadow-black/25 hover:bg-amber-dark
+            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full text-white
+                       text-sm font-semibold shadow-lg shadow-black/25
                        transition-colors duration-200 cursor-pointer"
+            style={{ background: 'linear-gradient(135deg, #8B5A3E 0%, #7C2D12 100%)' }}
           >
             Get started free <ArrowRightIcon />
           </motion.button>
@@ -234,7 +250,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         </motion.div>
 
         {/* Social proof */}
-        <motion.p variants={fadeUp} className="text-xs text-white/45 tracking-wide pt-1">
+        <motion.p variants={fadeUp} className="text-xs text-white/42 tracking-wide pt-1">
           Free to use &nbsp;·&nbsp; No credit card required &nbsp;·&nbsp; Your data stays private
         </motion.p>
 
@@ -242,8 +258,8 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     </section>
 
     {/* ── Features ── */}
-    <section className="px-6 py-24 bg-parchment/60">
-      <div className="max-w-5xl mx-auto">
+    <section className="px-6 py-28 bg-ivory">
+      <div className="max-w-6xl mx-auto">
         <motion.div
           variants={stagger}
           initial="hidden"
@@ -252,18 +268,18 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
         >
           <motion.p
             variants={fadeUp}
-            className="text-xs font-semibold text-amber uppercase tracking-[0.15em] text-center mb-3"
+            className="text-xs font-semibold text-clay uppercase tracking-[0.18em] text-center mb-3"
           >
             Features
           </motion.p>
           <motion.h2
             variants={fadeUp}
-            className="text-2xl sm:text-3xl font-semibold text-espresso text-center mb-12"
+            className="text-3xl sm:text-4xl font-semibold text-espresso text-center mb-14 tracking-[-0.03em]"
           >
             Everything you need for a great trip
           </motion.h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             {FEATURES.map((f) => (
               <FeatureCard key={f.title} {...f} />
             ))}
@@ -273,26 +289,28 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     </section>
 
     {/* ── How it works ── */}
-    <section className="px-6 py-24">
-      <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-16 items-start">
+    <section className="px-6 py-28 bg-parchment/40">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-20 items-start">
 
-        {/* Left — heading */}
+        {/* Left — heading (sticky on desktop) */}
         <motion.div
           initial={{ opacity: 0, x: -16 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ type: 'spring', bounce: 0.15, duration: 0.65 }}
+          className="sm:sticky sm:top-24 sm:self-start"
         >
-          <p className="text-xs font-semibold text-amber uppercase tracking-[0.15em] mb-3">
+          <p className="text-xs font-semibold text-clay uppercase tracking-[0.18em] mb-3">
             How it works
           </p>
-          <h2 className="text-2xl sm:text-3xl font-semibold text-espresso">
+          <h2 className="text-3xl sm:text-4xl font-semibold text-espresso tracking-[-0.03em]">
             From idea to itinerary<br />in three steps
           </h2>
-          <p className="text-sm text-muted mt-4 leading-relaxed max-w-sm">
+          <p className="text-sm text-muted mt-5 leading-relaxed max-w-sm">
             No complex setup. Create a trip, let the planner do the heavy lifting,
             then use the built-in tools to stay organised.
           </p>
+          <div className="mt-8 w-12 h-0.5 rounded-full bg-clay/40" />
         </motion.div>
 
         {/* Right — steps */}
@@ -314,18 +332,24 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     </section>
 
     {/* ── CTA strip ── */}
-    <section className="px-6 py-20 bg-espresso">
+    <section className="relative px-6 py-24 bg-espresso overflow-hidden">
+      {/* Radial texture overlay */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(139,90,62,0.35) 0%, transparent 65%)' }} />
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(124,45,18,0.2) 0%, transparent 60%)' }} />
+
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ type: 'spring', bounce: 0.15, duration: 0.6 }}
-        className="max-w-xl mx-auto text-center space-y-6"
+        className="relative max-w-xl mx-auto text-center space-y-6"
       >
-        <h2 className="text-2xl sm:text-3xl font-semibold text-ivory">
+        <h2 className="text-3xl sm:text-4xl font-semibold text-ivory tracking-[-0.03em]">
           Ready to start planning?
         </h2>
-        <p className="text-sm text-ivory/60 leading-relaxed">
+        <p className="text-sm text-ivory/55 leading-relaxed">
           Create your free account and generate your first itinerary in under a minute.
         </p>
         <motion.button
@@ -341,8 +365,8 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     </section>
 
     {/* ── Footer ── */}
-    <footer className="px-6 py-8 border-t border-smoke">
-      <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+    <footer className="px-6 py-8 border-t border-smoke bg-ivory">
+      <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2 select-none">
           <PlaneIcon className="w-4 h-4 text-clay" />
           <span className="text-base font-bold text-espresso tracking-[-0.03em] font-display">
