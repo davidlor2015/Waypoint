@@ -45,14 +45,11 @@ export interface InspirationResult {
 export type Region = 'popular' | 'europe' | 'asia' | 'americas' | 'africa' | 'oceania';
 
 export interface ExploreDestination {
-  slug: string;
+  id: string;
   city: string;
   country: string;
-  region: Region;
   tag?: 'Beach' | 'Culture' | 'Adventure' | 'Food' | 'Nature';
   description?: string;
-  sort_order: number;
-  teleport_score?: number;
 }
 
 export interface ExploreDestinationsResult {
@@ -100,15 +97,8 @@ export async function getInspirations(
   return res.json();
 }
 
-export async function getExploreDestinations(
-  token: string,
-  region?: Region,
-): Promise<ExploreDestinationsResult> {
-  const params = new URLSearchParams();
-  if (region) params.set('region', region);
-  params.set('include_scores', 'true');
-  const q = params.toString();
-  const res = await fetch(`${API_URL}/v1/search/explore-destinations${q ? `?${q}` : ''}`, {
+export async function getExploreDestinations(token: string): Promise<ExploreDestinationsResult> {
+  const res = await fetch(`${API_URL}/v1/search/explore-destinations`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {

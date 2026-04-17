@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 interface NominatimResult {
   lat: string;
@@ -12,11 +12,10 @@ export interface GeocodedPin {
   coords: [number, number];
 }
 
-// ── Module-level cache (persists for the lifetime of the session) ─────────────
+
 
 const geocodeCache = new Map<string, [number, number] | null>();
 
-// ── Private helpers ───────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -45,7 +44,7 @@ function buildPins(destinations: string[]): GeocodedPin[] {
   });
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+
 
 /**
  * Geocodes an array of destination strings via Nominatim (OpenStreetMap).

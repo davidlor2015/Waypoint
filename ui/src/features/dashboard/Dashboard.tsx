@@ -7,7 +7,7 @@ import {
 import type { Trip } from '../../shared/api/trips';
 import { DestinationsMap } from './DestinationsMap';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 interface DashboardProps {
   trips: Trip[];
@@ -22,7 +22,7 @@ interface StatConfig {
   borderColor: string;
 }
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+
 
 const GlobeIcon = () => (
   <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
@@ -60,7 +60,7 @@ const MapIcon = () => (
   </svg>
 );
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+
 
 const CHART_COLORS = ['#B45309', '#8B5A3E', '#3F6212', '#881337', '#92400E'];
 
@@ -72,7 +72,7 @@ const TOOLTIP_STYLE: React.CSSProperties = {
   fontFamily: 'Manrope, sans-serif',
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 const tripDuration = (start: string, end: string): number =>
   Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000));
@@ -82,7 +82,7 @@ const parseBudgetValue = (val: string): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// ── Animation variants ────────────────────────────────────────────────────────
+
 
 const statsListVariants = {
   hidden: {},
@@ -99,7 +99,7 @@ const chartVariants = {
   show: { opacity: 1, y: 0, transition: { type: 'spring' as const, bounce: 0.2, duration: 0.5 } },
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+
 
 const StatCard = ({ icon, value, label, valueColor, bgColor, borderColor }: StatConfig) => (
   <motion.div
@@ -138,7 +138,7 @@ const ChartCard = ({ title, empty, emptyMessage, children }: ChartCardProps) => 
   </motion.div>
 );
 
-// ── Main Component ────────────────────────────────────────────────────────────
+
 
 export function Dashboard({ trips }: DashboardProps) {
   const stats = useMemo(() => ({

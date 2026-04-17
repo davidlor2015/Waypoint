@@ -51,37 +51,13 @@ class InspirationResult(BaseModel):
 # ── Explore destinations ──────────────────────────────────────────────────────
 
 class ExploreDestination(BaseModel):
-    slug: str
+    id: str
     city: str
     country: str = ""
-    region: str
     tag: str | None = None
     description: str | None = None
-    sort_order: int = 0
-    teleport_score: float | None = None
 
 
 class ExploreDestinationsResult(BaseModel):
     popular: list[ExploreDestination]
     regions: dict[str, list[ExploreDestination]]
-
-
-class ExploreDestinationCreate(BaseModel):
-    slug: str
-    city: str
-    country: str = ""
-    region: str
-    tag: str | None = None
-    description: str | None = None
-    sort_order: int = 0
-    is_active: bool = True
-
-
-class ExploreDestinationUpdate(BaseModel):
-    city: str | None = None
-    country: str | None = None
-    region: str | None = None
-    tag: str | None = None
-    description: str | None = None
-    sort_order: int | None = None
-    is_active: bool | None = None

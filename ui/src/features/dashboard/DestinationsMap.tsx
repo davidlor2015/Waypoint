@@ -5,13 +5,13 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import type { Trip } from '../../shared/api/trips';
 import { useGeocode } from '../../shared/hooks/useGeocode';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+
 
 interface DestinationsMapProps {
   trips: Trip[];
 }
 
-// ── Custom pin icon ───────────────────────────────────────────────────────────
+
 
 // Defined once at module scope to avoid recreating on every render.
 const amberPin = L.divIcon({
@@ -22,7 +22,7 @@ const amberPin = L.divIcon({
   popupAnchor: [0, -12],
 });
 
-// ── Component ─────────────────────────────────────────────────────────────────
+
 
 export const DestinationsMap = ({ trips }: DestinationsMapProps) => {
   const destinations = useMemo(
