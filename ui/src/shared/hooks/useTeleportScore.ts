@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 
+export interface TeleportCategory {
+  name: string;
+  score_out_of_10: number;
+}
+
 export interface TeleportScore {
   teleport_city_score: number;   // 0–100
   summary: string;
+  categories: TeleportCategory[];
 }
 
 interface State {
@@ -52,6 +58,7 @@ export function useTeleportScore(city: string): State {
             data: {
               teleport_city_score: Math.round(scoresData.teleport_city_score ?? 0),
               summary: scoresData.summary ?? '',
+              categories: scoresData.categories ?? [],
             },
           });
         }

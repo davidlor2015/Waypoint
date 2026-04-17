@@ -59,7 +59,6 @@ BUDGET_OPTIONS: list[str] = ["budget", "moderate"]
 PACE_OPTIONS:   list[str] = ["relaxed", "balanced"]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_id(
     destination: str,
@@ -94,8 +93,6 @@ def _save(records: list[dict], path: Path) -> None:
     with path.open("w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
 
-
-# ── Public interface ──────────────────────────────────────────────────────────
 
 def run(
     output_path: Path = OUTPUT_PATH,
@@ -171,8 +168,6 @@ def run(
     )
     return {"succeeded": len(results), "failed": failed, "output_path": output_path}
 
-
-# ── CLI entry point ───────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
