@@ -12,6 +12,7 @@ import {
 } from '../../shared/api/matching';
 import { FormField } from '../../shared/ui/FormField';
 import { inputCls } from '../../shared/ui/inputCls';
+import { getProfileCompleteness } from './matchingInsights';
 
 
 const TRAVEL_STYLE_OPTIONS: { value: TravelStyle; label: string }[] = [
@@ -111,6 +112,21 @@ export const TravelProfileForm = ({
   const selectedBudget    = useWatch({ control, name: 'budget_range' });
   const selectedInterests = useWatch({ control, name: 'interests' });
   const isDiscoverable    = useWatch({ control, name: 'is_discoverable' });
+  const groupSizeMin      = useWatch({ control, name: 'group_size_min' });
+  const groupSizeMax      = useWatch({ control, name: 'group_size_max' });
+  const normalizedGroupSizeMin = typeof groupSizeMin === 'number' ? groupSizeMin : Number(groupSizeMin ?? profile?.group_size_min ?? 1);
+  const normalizedGroupSizeMax = typeof groupSizeMax === 'number' ? groupSizeMax : Number(groupSizeMax ?? profile?.group_size_max ?? 4);
+
+  const completeness = getProfileCompleteness({
+    id: profile?.id ?? 0,
+    user_id: profile?.user_id ?? 0,
+    travel_style: selectedStyle,
+    budget_range: selectedBudget,
+    interests: selectedInterests,
+    group_size_min: normalizedGroupSizeMin,
+    group_size_max: normalizedGroupSizeMax,
+    is_discoverable: isDiscoverable,
+  });
 
   const toggleInterest = (interest: string) => {
     const next = selectedInterests.includes(interest)
@@ -155,6 +171,28 @@ export const TravelProfileForm = ({
         <p className="text-sm text-flint mt-1">
           Tell us how you like to travel so we can find better trip matches.
         </p>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-smoke bg-parchment/70 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-flint">Profile quality</p>
+            <p className="text-base font-bold text-espresso mt-1">{completeness.score}% complete</p>
+          </div>
+          <span className="px-3 py-1.5 rounded-full bg-white border border-smoke text-xs font-bold text-flint">
+            {completeness.completed}/{completeness.total} signals ready
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-white border border-smoke overflow-hidden">
+          <div className="h-full rounded-full bg-amber" style={{ width: `${completeness.score}%` }} />
+        </div>
+        {completeness.prompts.length > 0 && (
+          <div className="space-y-2 text-sm text-flint">
+            {completeness.prompts.map((prompt) => (
+              <p key={prompt}>{prompt}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-5">

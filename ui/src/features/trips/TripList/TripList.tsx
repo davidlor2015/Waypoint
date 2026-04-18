@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTrips, deleteTrip, type Trip } from '../../../shared/api/trips';
+import { getTrips, getTripSummaries, deleteTrip, type Trip, type TripSummary } from '../../../shared/api/trips';
 import {
   planItinerarySmart,
   applyItinerary,
@@ -53,6 +53,23 @@ function parseItinerary(description: string): Itinerary | null {
 }
 
 type TripStatus = 'upcoming' | 'active' | 'past';
+type TripWorkspaceTab = 'overview' | 'itinerary' | 'packing' | 'budget' | 'map';
+
+interface PackingSummary {
+  total: number;
+  checked: number;
+  progressPct: number;
+  loading: boolean;
+}
+
+interface BudgetSummary {
+  limit: number | null;
+  totalSpent: number;
+  remaining: number | null;
+  isOverBudget: boolean;
+  expenseCount: number;
+  loading: boolean;
+}
 
 const STATUS_CONFIG: Record<TripStatus, { label: string; cls: string }> = {
   upcoming: { label: 'Upcoming', cls: 'bg-amber/15 text-amber border-amber/30'   },
@@ -68,6 +85,49 @@ function getTripStatus(startIso: string, endIso: string): TripStatus {
   if (now > end)   return 'past';
   return 'active';
 }
+
+function getTripTimelineLabel(startIso: string, endIso: string): string {
+  const now = Date.now();
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  const daysUntilStart = Math.ceil((start - now) / 86_400_000);
+  const daysUntilEnd = Math.ceil((end - now) / 86_400_000);
+
+  if (daysUntilStart > 1) return `${daysUntilStart} days until departure`;
+  if (daysUntilStart === 1) return 'Departs tomorrow';
+  if (daysUntilStart === 0) return 'Departs today';
+  if (daysUntilEnd >= 0) return 'Currently traveling';
+  if (daysUntilEnd === -1) return 'Ended yesterday';
+  return `Completed ${Math.abs(daysUntilEnd)} days ago`;
+}
+
+function itinerarySnapshotLabel(hasSavedItinerary: boolean, hasPendingItinerary: boolean, isGenerating: boolean): string {
+  if (isGenerating) return 'Generating itinerary';
+  if (hasPendingItinerary) return 'Draft ready to review';
+  if (hasSavedItinerary) return 'Saved itinerary';
+  return 'No itinerary yet';
+}
+
+function packingSnapshotLabel(summary: PackingSummary | undefined): string {
+  if (!summary || summary.loading) return 'Loading packing';
+  if (summary.total === 0) return 'No packing items yet';
+  return `${summary.checked}/${summary.total} packed`;
+}
+
+function budgetSnapshotLabel(summary: BudgetSummary | undefined): string {
+  if (!summary || summary.loading) return 'Loading budget';
+  if (summary.limit === null) return summary.expenseCount > 0 ? 'Expenses added, no limit set' : 'No budget set';
+  if (summary.isOverBudget) return `Over budget by $${Math.abs(summary.remaining ?? 0).toFixed(0)}`;
+  return `$${Math.max(summary.remaining ?? 0, 0).toFixed(0)} remaining`;
+}
+
+const TAB_LABELS: Array<{ id: TripWorkspaceTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'itinerary', label: 'Itinerary' },
+  { id: 'packing', label: 'Packing' },
+  { id: 'budget', label: 'Budget' },
+  { id: 'map', label: 'Map' },
+];
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -184,10 +244,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [applyingIds, setApplyingIds]               = useState<Set<number>>(new Set());
   const [viewingIds, setViewingIds]                 = useState<Set<number>>(new Set());
   const [editingTrip, setEditingTrip]               = useState<Trip | null>(null);
-  const [packingIds, setPackingIds]                 = useState<Set<number>>(new Set());
-  const [budgetIds, setBudgetIds]                   = useState<Set<number>>(new Set());
-  const [mapIds, setMapIds]                         = useState<Set<number>>(new Set());
   const [confirmDeleteId, setConfirmDeleteId]       = useState<number | null>(null);
+  const [activeTabs, setActiveTabs]                 = useState<Record<number, TripWorkspaceTab>>({});
+  const [packingSummaries, setPackingSummaries]     = useState<Record<number, PackingSummary>>({});
+  const [budgetSummaries, setBudgetSummaries]       = useState<Record<number, BudgetSummary>>({});
 
   const { streams, start: startStream, reset: resetStream } = useStreamingItinerary(token);
 
@@ -201,28 +261,8 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
     });
   };
 
-  const togglePacking = (tripId: number) => {
-    setPackingIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(tripId)) { next.delete(tripId); } else { next.add(tripId); }
-      return next;
-    });
-  };
-
-  const toggleBudget = (tripId: number) => {
-    setBudgetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(tripId)) { next.delete(tripId); } else { next.add(tripId); }
-      return next;
-    });
-  };
-
-  const toggleMap = (tripId: number) => {
-    setMapIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(tripId)) { next.delete(tripId); } else { next.add(tripId); }
-      return next;
-    });
+  const setActiveTab = (tripId: number, tab: TripWorkspaceTab) => {
+    setActiveTabs((prev) => ({ ...prev, [tripId]: tab }));
   };
 
   // ── Initial fetch ──────────────────────────────────────────────────────────
@@ -232,8 +272,36 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getTrips(token);
+        const [data, summaries] = await Promise.all([getTrips(token), getTripSummaries(token)]);
         setTrips(data);
+        setPackingSummaries(
+          Object.fromEntries(
+            summaries.map((summary: TripSummary) => [
+              summary.trip_id,
+              {
+                total: summary.packing_total,
+                checked: summary.packing_checked,
+                progressPct: summary.packing_progress_pct,
+                loading: false,
+              },
+            ]),
+          ),
+        );
+        setBudgetSummaries(
+          Object.fromEntries(
+            summaries.map((summary: TripSummary) => [
+              summary.trip_id,
+              {
+                limit: summary.budget_limit,
+                totalSpent: summary.budget_total_spent,
+                remaining: summary.budget_remaining,
+                isOverBudget: summary.budget_is_over,
+                expenseCount: summary.budget_expense_count,
+                loading: false,
+              },
+            ]),
+          ),
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
       } finally {
@@ -404,14 +472,14 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
             const isAnyGenerating   = isStreaming || isGeneratingSmart;
             const isApplying        = applyingIds.has(trip.id);
             const isViewing         = viewingIds.has(trip.id);
-            const isShowingPacking  = packingIds.has(trip.id);
-            const isShowingBudget   = budgetIds.has(trip.id);
-            const isShowingMap      = mapIds.has(trip.id);
 
             const pendingItinerary  = streamItinerary ?? pendingItineraries[trip.id] ?? null;
-            const hasSavedItinerary = !!trip.description;
-            const savedItinerary    = hasSavedItinerary ? parseItinerary(trip.description!) : null;
+            const savedItinerary    = trip.description ? parseItinerary(trip.description) : null;
+            const hasSavedItinerary = savedItinerary !== null;
             const tripStatus        = getTripStatus(trip.start_date, trip.end_date);
+            const activeTab         = activeTabs[trip.id] ?? 'overview';
+            const packingSummary    = packingSummaries[trip.id];
+            const budgetSummary     = budgetSummaries[trip.id];
 
             const startDate = new Date(trip.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             const endDate   = new Date(trip.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -442,9 +510,98 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                 <div className="flex flex-col gap-1 text-sm text-flint">
                   <span className="font-medium text-espresso">{trip.destination}</span>
                   <span>{startDate} – {endDate}</span>
+                  <span className="text-xs font-semibold text-flint/80">{getTripTimelineLabel(trip.start_date, trip.end_date)}</span>
                   {trip.notes && (
                     <span className="text-xs text-flint/70 italic mt-0.5">{trip.notes}</span>
                   )}
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="rounded-2xl border border-smoke bg-parchment/70 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Timeline</p>
+                    <p className="text-sm font-bold text-espresso mt-1">{getTripTimelineLabel(trip.start_date, trip.end_date)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-smoke bg-parchment/70 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Itinerary</p>
+                    <p className="text-sm font-bold text-espresso mt-1">
+                      {itinerarySnapshotLabel(hasSavedItinerary, !!pendingItinerary, isAnyGenerating)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-smoke bg-parchment/70 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Packing</p>
+                    <p className="text-sm font-bold text-espresso mt-1">{packingSnapshotLabel(packingSummary)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-smoke bg-parchment/70 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Budget</p>
+                    <p className="text-sm font-bold text-espresso mt-1">{budgetSnapshotLabel(budgetSummary)}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex gap-2 flex-wrap">
+                    <PillButton variant="ocean" onClick={() => setActiveTab(trip.id, 'itinerary')}>
+                      Continue Planning
+                    </PillButton>
+                    <PillButton variant="ghost" onClick={() => setEditingTrip(trip)}>
+                      Edit
+                    </PillButton>
+                  </div>
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    {confirmDeleteId === trip.id ? (
+                      <motion.div
+                        key="confirm"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="flex items-center gap-2"
+                      >
+                        <span className="text-sm font-semibold text-danger">Delete trip?</span>
+                        <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
+                          Yes, delete
+                        </PillButton>
+                        <PillButton variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                          Cancel
+                        </PillButton>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="idle"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <PillButton variant="danger" onClick={() => setConfirmDeleteId(trip.id)}>
+                          Delete
+                        </PillButton>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex gap-1 bg-parchment rounded-full p-1 w-fit flex-wrap">
+                  {TAB_LABELS.map((tab) => {
+                    const disabled = tab.id === 'map' && !savedItinerary;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => !disabled && setActiveTab(trip.id, tab.id)}
+                        disabled={disabled}
+                        className={[
+                          'px-3 py-1.5 rounded-full text-sm font-semibold transition-colors duration-150',
+                          activeTab === tab.id
+                            ? 'bg-white text-espresso shadow-sm'
+                            : 'text-flint hover:text-espresso',
+                          disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+                        ].join(' ')}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Per-card stream error */}
@@ -476,24 +633,20 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   </div>
                 )}
 
-                {/* Completed itinerary pending review */}
-                {!isStreaming && pendingItinerary ? (
-                  <ItineraryPanel
-                    itinerary={pendingItinerary}
-                    onApply={() => handleApply(trip.id)}
-                    applying={isApplying}
-                  />
-                ) : (
-                  <>
-                    {isViewing && savedItinerary && (
-                      <ItineraryPanel itinerary={savedItinerary} />
-                    )}
+                {activeTab === 'overview' && (
+                  <div className="rounded-2xl border border-smoke bg-parchment/40 px-5 py-4">
+                    <p className="text-sm font-semibold text-espresso">
+                      {hasSavedItinerary
+                        ? 'Your trip already has a saved itinerary. Continue planning to refine the details, review the map, or update logistics.'
+                        : 'Start in the itinerary tab to generate a plan, then move into packing and budget once the trip takes shape.'}
+                    </p>
+                  </div>
+                )}
 
-                    {/* Action buttons — hidden while streaming */}
+                {activeTab === 'itinerary' && (
+                  <div className="space-y-4">
                     {!isStreaming && (
                       <div className="flex flex-wrap gap-2 pt-1 items-center">
-
-                        {/* Group 1 — AI generation */}
                         <PillButton
                           variant="ocean"
                           onClick={() => startStream(trip.id, trip.notes ?? undefined)}
@@ -509,73 +662,59 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                         >
                           {isGeneratingSmart ? 'Working...' : 'Smart Plan'}
                         </PillButton>
-
-                        <span className="self-center h-5 w-px bg-smoke/70" />
-
-                        {/* Group 2 — view tools */}
                         {savedItinerary && (
                           <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
-                            {isViewing ? 'Hide Itinerary' : 'View Itinerary'}
+                            {isViewing ? 'Hide Saved Itinerary' : 'View Saved Itinerary'}
                           </PillButton>
                         )}
-                        {savedItinerary && (
-                          <PillButton variant="ghost" onClick={() => toggleMap(trip.id)}>
-                            {isShowingMap ? 'Hide Map' : 'Map'}
-                          </PillButton>
-                        )}
-                        <PillButton variant="ghost" onClick={() => togglePacking(trip.id)}>
-                          {isShowingPacking ? 'Hide Packing' : 'Packing List'}
-                        </PillButton>
-                        <PillButton variant="ghost" onClick={() => toggleBudget(trip.id)}>
-                          {isShowingBudget ? 'Hide Budget' : 'Budget'}
-                        </PillButton>
-
-                        <span className="self-center h-5 w-px bg-smoke/70" />
-
-                        {/* Group 3 — management */}
-                        <PillButton variant="ghost" onClick={() => setEditingTrip(trip)}>
-                          Edit
-                        </PillButton>
-
-                        <AnimatePresence mode="wait" initial={false}>
-                          {confirmDeleteId === trip.id ? (
-                            <motion.div
-                              key="confirm"
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{ duration: 0.15 }}
-                              className="flex items-center gap-2"
-                            >
-                              <span className="text-sm font-semibold text-danger">Delete trip?</span>
-                              <PillButton variant="danger" onClick={() => handleDelete(trip.id)}>
-                                Yes, delete
-                              </PillButton>
-                              <PillButton variant="ghost" onClick={() => setConfirmDeleteId(null)}>
-                                Cancel
-                              </PillButton>
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              key="idle"
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{ duration: 0.15 }}
-                            >
-                              <PillButton variant="danger" onClick={() => setConfirmDeleteId(trip.id)}>
-                                Delete
-                              </PillButton>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
                     )}
 
-                    {isShowingMap     && savedItinerary && <ItineraryMap itinerary={savedItinerary} />}
-                    {isShowingPacking && <PackingList token={token} tripId={trip.id} />}
-                    {isShowingBudget  && <BudgetTracker token={token} tripId={trip.id} />}
-                  </>
+                    {!isStreaming && pendingItinerary ? (
+                      <ItineraryPanel
+                        itinerary={pendingItinerary}
+                        onApply={() => handleApply(trip.id)}
+                        applying={isApplying}
+                      />
+                    ) : (
+                      isViewing && savedItinerary && <ItineraryPanel itinerary={savedItinerary} />
+                    )}
+
+                    {!pendingItinerary && !isViewing && !isStreaming && !savedItinerary && (
+                      <div className="rounded-2xl border border-dashed border-smoke bg-parchment/40 px-5 py-8 text-center">
+                        <p className="text-sm font-semibold text-espresso">No itinerary yet</p>
+                        <p className="text-sm text-flint mt-1">Generate an AI plan or smart plan to start building this trip.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'packing' && (
+                  <PackingList
+                    token={token}
+                    tripId={trip.id}
+                    onSummaryChange={(summary) =>
+                      setPackingSummaries((prev) => ({ ...prev, [trip.id]: summary }))
+                    }
+                  />
+                )}
+                {activeTab === 'budget' && (
+                  <BudgetTracker
+                    token={token}
+                    tripId={trip.id}
+                    onSummaryChange={(summary) =>
+                      setBudgetSummaries((prev) => ({ ...prev, [trip.id]: summary }))
+                    }
+                  />
+                )}
+                {activeTab === 'map' && savedItinerary && (
+                  <ItineraryMap key={`trip-map-${trip.id}`} itinerary={savedItinerary} />
+                )}
+                {activeTab === 'map' && !savedItinerary && (
+                  <div className="rounded-2xl border border-dashed border-smoke bg-parchment/40 px-5 py-8 text-center">
+                    <p className="text-sm font-semibold text-espresso">Map unavailable</p>
+                    <p className="text-sm text-flint mt-1">Save a valid itinerary first to view locations on the map.</p>
+                  </div>
                 )}
               </motion.li>
             );

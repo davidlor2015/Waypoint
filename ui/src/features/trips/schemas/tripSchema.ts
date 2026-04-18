@@ -7,7 +7,7 @@ import { z } from "zod";
  *   - title / destination: required, max 255 chars
  *   - start_date / end_date: required ISO date strings
  *   - end_date >= start_date (same cross-field validator as the backend)
- *   - notes (interests): optional free text
+ *   - notes (trip preferences): optional free text
  */
 export const tripSchema = z
   .object({

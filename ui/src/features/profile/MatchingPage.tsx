@@ -6,21 +6,13 @@ import { MatchRequestList } from './MatchRequestList';
 import { useMatchingProfile } from './useMatchingProfile';
 import { useMatchRequests } from './useMatchRequests';
 import type { Trip } from '../../shared/api/trips';
+import { formatMatchingLabel, getProfileCompleteness } from './matchingInsights';
 
 
 interface MatchingPageProps {
   token: string;
   trips: Trip[];
 }
-
-
-function formatLabel(value: string): string {
-  return value
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
 
 export const MatchingPage = ({ token, trips }: MatchingPageProps) => {
   const { profile, loading, error, upsert } = useMatchingProfile(token);
@@ -55,6 +47,8 @@ export const MatchingPage = ({ token, trips }: MatchingPageProps) => {
       </div>
     );
   }
+
+  const completeness = getProfileCompleteness(profile);
 
   return (
     <div className="space-y-6">
@@ -119,15 +113,58 @@ export const MatchingPage = ({ token, trips }: MatchingPageProps) => {
             </span>
           </div>
 
+          <div className="rounded-2xl border border-smoke bg-parchment/70 p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-flint">Profile quality</p>
+                <p className="text-base font-bold text-espresso mt-1">{completeness.score}% complete</p>
+              </div>
+              <span className="px-3 py-1.5 rounded-full bg-white border border-smoke text-xs font-bold text-flint">
+                {completeness.completed}/{completeness.total} signals ready
+              </span>
+            </div>
+
+            <div className="h-2 rounded-full bg-white border border-smoke overflow-hidden">
+              <div className="h-full rounded-full bg-amber" style={{ width: `${completeness.score}%` }} />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-2 text-sm">
+              {completeness.checks.map((check) => (
+                <div
+                  key={check.label}
+                  className={[
+                    'rounded-xl border px-3 py-2',
+                    check.done
+                      ? 'bg-olive/10 border-olive/20 text-olive'
+                      : 'bg-white border-smoke text-flint',
+                  ].join(' ')}
+                >
+                  {check.label}
+                </div>
+              ))}
+            </div>
+
+            {completeness.prompts.length > 0 && (
+              <div className="rounded-xl bg-white border border-smoke px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-flint">Improve your match quality</p>
+                <div className="mt-2 space-y-2 text-sm text-flint">
+                  {completeness.prompts.map((prompt) => (
+                    <p key={prompt}>{prompt}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-2xl bg-parchment border border-smoke px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-flint">Travel style</p>
-              <p className="text-base font-bold text-espresso mt-1">{formatLabel(profile.travel_style)}</p>
+              <p className="text-base font-bold text-espresso mt-1">{formatMatchingLabel(profile.travel_style)}</p>
             </div>
 
             <div className="rounded-2xl bg-parchment border border-smoke px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-flint">Budget</p>
-              <p className="text-base font-bold text-espresso mt-1">{formatLabel(profile.budget_range)}</p>
+              <p className="text-base font-bold text-espresso mt-1">{formatMatchingLabel(profile.budget_range)}</p>
             </div>
 
             <div className="rounded-2xl bg-parchment border border-smoke px-4 py-4 sm:col-span-2">

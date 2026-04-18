@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { Itinerary } from '../../../shared/api/ai';
-import { useGeocode } from '../../../shared/hooks/useGeocode';
+import { useGeocodeQueries } from '../../../shared/hooks/useGeocode';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +20,49 @@ export interface ItineraryPin {
 // Cycles through brand colours per day (amber, clay, olive, danger, espresso).
 const DAY_COLORS = ['#B45309', '#8B5A3E', '#3F6212', '#881337', '#1C1917'];
 
+function hasFiniteCoords(lat: number | null | undefined, lon: number | null | undefined): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lon);
+}
+
+function spreadOverlappingPins(pins: ItineraryPin[]): ItineraryPin[] {
+  const groups = new Map<string, ItineraryPin[]>();
+
+  for (const pin of pins) {
+    const key = `${pin.coords[0].toFixed(6)},${pin.coords[1].toFixed(6)}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(pin);
+    } else {
+      groups.set(key, [pin]);
+    }
+  }
+
+  const spread: ItineraryPin[] = [];
+
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      spread.push(group[0]);
+      continue;
+    }
+
+    const [baseLat, baseLon] = group[0].coords;
+    const radius = 0.0012;
+
+    group.forEach((pin, index) => {
+      const angle = (2 * Math.PI * index) / group.length;
+      const latOffset = Math.sin(angle) * radius;
+      const lonOffset = Math.cos(angle) * radius;
+
+      spread.push({
+        ...pin,
+        coords: [baseLat + latOffset, baseLon + lonOffset],
+      });
+    });
+  }
+
+  return spread;
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -34,22 +77,29 @@ const DAY_COLORS = ['#B45309', '#8B5A3E', '#3F6212', '#881337', '#1C1917'];
 export function useItineraryPins(
   itinerary: Itinerary,
 ): { pins: ItineraryPin[]; loading: boolean } {
-  // Collect only the location strings that need geocoding (no direct coords).
-  const locationsToGeocode = useMemo(() => {
-    const locs: string[] = [];
+  const queriesToGeocode = useMemo(() => {
+    const queries: Array<{ key: string; query: string; label: string; fallbackQueries: string[] }> = [];
     for (const day of itinerary.days) {
+      let eventIndex = 1;
       for (const item of day.items) {
-        if ((item.lat === null || item.lon === null) && item.location) {
-          locs.push(item.location);
+        if (!hasFiniteCoords(item.lat, item.lon) && item.location) {
+          const specificQuery = `${item.title}, ${item.location}`;
+          queries.push({
+            key: `${day.day_number}-${eventIndex}`,
+            query: specificQuery,
+            label: `${day.day_number}-${eventIndex}`,
+            fallbackQueries: [item.location],
+          });
         }
+        eventIndex++;
       }
     }
-    return locs;
+    return queries;
   }, [itinerary]);
 
-  const { pins: geocodedPins, loading } = useGeocode(locationsToGeocode);
+  const { pins: geocodedPins, loading } = useGeocodeQueries(queriesToGeocode);
 
-  // Build a location → coords lookup from geocoding results.
+  // Build an event key → coords lookup from geocoding results.
   const geocodedMap = useMemo(() => {
     const m = new Map<string, [number, number]>();
     for (const p of geocodedPins) {
@@ -66,10 +116,10 @@ export function useItineraryPins(
       for (const item of day.items) {
         let coords: [number, number] | null = null;
 
-        if (item.lat !== null && item.lon !== null) {
-          coords = [item.lat, item.lon];
+        if (hasFiniteCoords(item.lat, item.lon)) {
+          coords = [item.lat as number, item.lon as number];
         } else if (item.location) {
-          coords = geocodedMap.get(item.location) ?? null;
+          coords = geocodedMap.get(`${day.day_number}-${eventIndex}`) ?? null;
         }
 
         if (coords !== null) {
@@ -88,7 +138,7 @@ export function useItineraryPins(
         eventIndex++;
       }
     }
-    return result;
+    return spreadOverlappingPins(result);
   }, [itinerary, geocodedMap]);
 
   return { pins, loading };

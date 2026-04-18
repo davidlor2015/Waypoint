@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBudgetTracker, type ExpenseCategory } from './useBudgetTracker';
 
@@ -6,6 +6,14 @@ import { useBudgetTracker, type ExpenseCategory } from './useBudgetTracker';
 interface BudgetTrackerProps {
   token: string;
   tripId: number;
+  onSummaryChange?: (summary: {
+    limit: number | null;
+    totalSpent: number;
+    remaining: number | null;
+    isOverBudget: boolean;
+    expenseCount: number;
+    loading: boolean;
+  }) => void;
 }
 
 
@@ -36,7 +44,7 @@ function progressBarCls(pct: number): string {
 }
 
 
-export const BudgetTracker = ({ token, tripId }: BudgetTrackerProps) => {
+export const BudgetTracker = ({ token, tripId, onSummaryChange }: BudgetTrackerProps) => {
   const {
     limit, expenses, totalSpent, remaining, isOverBudget, loading,
     setLimit, addExpense, removeExpense,
@@ -51,6 +59,17 @@ export const BudgetTracker = ({ token, tripId }: BudgetTrackerProps) => {
 
   const spentPct   = limit ? Math.min((totalSpent / limit) * 100, 100) : 0;
   const canAdd     = draftLabel.trim().length > 0 && Number(draftAmount) > 0;
+
+  useEffect(() => {
+    onSummaryChange?.({
+      limit,
+      totalSpent,
+      remaining,
+      isOverBudget,
+      expenseCount: expenses.length,
+      loading,
+    });
+  }, [expenses.length, isOverBudget, limit, loading, onSummaryChange, remaining, totalSpent]);
 
   const handleSaveLimit = useCallback(() => {
     const parsed = parseFloat(draftLimit);

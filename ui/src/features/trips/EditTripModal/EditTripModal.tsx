@@ -148,15 +148,18 @@ export const EditTripModal = ({ token, trip, onSuccess, onClose }: EditTripModal
             </FormField>
           </div>
 
-          {/* Interests (optional) */}
-          <FormField id="etm-notes" label="Interests" hint="(optional)" error={errors.notes?.message}>
+          {/* Trip preferences (optional) */}
+          <FormField id="etm-notes" label="Trip preferences" hint="Optional" error={errors.notes?.message}>
             <input
               id="etm-notes"
-              placeholder="e.g. food, history, nature"
+              placeholder="e.g. food, museums, low-cost activities"
               className={inputCls(!!errors.notes)}
               {...register('notes')}
             />
           </FormField>
+          <p className="-mt-2 text-xs text-flint">
+            These notes guide itinerary generation and trip planning, such as interests, pace, or budget preferences.
+          </p>
 
           {/* Root / server error */}
           <AnimatePresence>

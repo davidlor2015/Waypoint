@@ -15,6 +15,18 @@ export interface Trip {
 
 }
 
+export interface TripSummary {
+    trip_id: number;
+    packing_total: number;
+    packing_checked: number;
+    packing_progress_pct: number;
+    budget_limit: number | null;
+    budget_total_spent: number;
+    budget_remaining: number | null;
+    budget_is_over: boolean;
+    budget_expense_count: number;
+}
+
 interface TripCreate {
     title: string;
     destination: string;
@@ -103,4 +115,24 @@ export const deleteTrip = async (token: string, id: number): Promise<void> => {
         throw new Error('Failed to delete trip');
     }
 
+};
+
+export const getTripSummaries = async (token: string): Promise<TripSummary[]> => {
+    if (!token) {
+        throw new Error("No access token provided");
+    }
+
+    const response = await fetch(`${API_URL}/v1/trips/summaries`, {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to fetch trip summaries (${response.status}): ${text}`);
+    }
+
+    return response.json();
 };

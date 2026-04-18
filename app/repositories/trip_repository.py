@@ -1,5 +1,5 @@
 from typing import Optional, List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select
 
 from app.models.trip import Trip
@@ -19,6 +19,20 @@ class TripRepository(BaseRepository[Trip]):
         return list(
             self.db.scalars(
                 select(Trip).where(Trip.user_id == user_id).offset(skip).limit(limit)
+            ).all()
+        )
+
+    def get_all_by_user_with_planning(self, user_id: int, skip: int = 0, limit: int = 100) -> List[Trip]:
+        return list(
+            self.db.scalars(
+                select(Trip)
+                .options(
+                    selectinload(Trip.packing_items),
+                    selectinload(Trip.budget_expenses),
+                )
+                .where(Trip.user_id == user_id)
+                .offset(skip)
+                .limit(limit)
             ).all()
         )
 

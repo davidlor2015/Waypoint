@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePackingList } from './usePackingList';
 
@@ -7,6 +7,7 @@ import { usePackingList } from './usePackingList';
 interface PackingListProps {
   token: string;
   tripId: number;
+  onSummaryChange?: (summary: { total: number; checked: number; progressPct: number; loading: boolean }) => void;
 }
 
 // ── Animation variants ────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ const itemVariants = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const PackingList = ({ token, tripId }: PackingListProps) => {
+export const PackingList = ({ token, tripId, onSummaryChange }: PackingListProps) => {
   const { items, loading, addItem, toggleItem, removeItem, clearChecked } = usePackingList(token, tripId);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +28,10 @@ export const PackingList = ({ token, tripId }: PackingListProps) => {
   const checkedCount = items.filter((i) => i.checked).length;
   const total        = items.length;
   const progressPct  = total === 0 ? 0 : Math.round((checkedCount / total) * 100);
+
+  useEffect(() => {
+    onSummaryChange?.({ total, checked: checkedCount, progressPct, loading });
+  }, [checkedCount, loading, onSummaryChange, progressPct, total]);
 
   const handleAdd = useCallback(() => {
     addItem(draft);
