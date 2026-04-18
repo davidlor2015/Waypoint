@@ -4,7 +4,7 @@ import { FlightSearch } from '../search';
 import { useTeleportScoreBySlug } from '../../shared/hooks/useTeleportScoreBySlug';
 import { useTeleportCityImage } from '../../shared/hooks/useTeleportCityImage';
 import { useWishlist } from '../../shared/hooks/useWishlist';
-import { useAllTeleportScores } from '../../shared/hooks/useAllTeleportScores';
+
 import { useExploreDestinations } from '../../shared/hooks/useExploreDestinations';
 import type { Region } from '../../shared/api/search';
 import { WishlistButton } from '../../shared/ui';
@@ -104,13 +104,15 @@ const cardVariants = {
 };
 
 
-const TeleportBadge = ({ slug }: { slug: string }) => {
-  const { data, loading } = useTeleportScoreBySlug(slug);
+const TeleportBadge = ({ slug, prefetchedScore }: { slug: string; prefetchedScore?: number }) => {
+  const shouldFetch = typeof prefetchedScore !== 'number';
+  const { data, loading } = useTeleportScoreBySlug(slug, shouldFetch);
+
+  const score = typeof prefetchedScore === 'number' ? prefetchedScore : data?.teleport_city_score;
 
   if (loading) return <span className="inline-block w-16 h-4 rounded-full bg-parchment animate-pulse" />;
-  if (!data) return null;
+  if (typeof score !== 'number') return null;
 
-  const score = data.teleport_city_score;
   const color =
     score >= 70 ? 'text-olive border-olive/30 bg-olive/10' :
     score >= 45 ? 'text-amber border-amber/40 bg-amber/15' :
@@ -139,12 +141,13 @@ const SkeletonCard = () => (
 
 interface FeaturedHeroProps {
   destination: Destination;
+  score?: number;
   onPlanTrip: (dest: string) => void;
   isSaved: boolean;
   onToggleWishlist: () => void;
 }
 
-const FeaturedHero = ({ destination, onPlanTrip, isSaved, onToggleWishlist }: FeaturedHeroProps) => {
+const FeaturedHero = ({ destination, score, onPlanTrip, isSaved, onToggleWishlist }: FeaturedHeroProps) => {
   const { imageUrl, loading: imgLoading } = useTeleportCityImage(destination.city);
   const [imgError, setImgError] = useState(false);
   const config = destination.tag ? TAG_CONFIG[destination.tag] : DEFAULT_FALLBACK;
@@ -198,7 +201,7 @@ const FeaturedHero = ({ destination, onPlanTrip, isSaved, onToggleWishlist }: Fe
           )}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-white/60">Score:</span>
-            <TeleportBadge slug={destination.id} />
+            <TeleportBadge slug={destination.id} prefetchedScore={score} />
           </div>
           <motion.button
             onClick={() => onPlanTrip(fullDestination)}
@@ -219,13 +222,14 @@ const FeaturedHero = ({ destination, onPlanTrip, isSaved, onToggleWishlist }: Fe
 
 interface DestinationCardProps {
   destination: Destination;
+  score?: number;
   onPlanTrip: (dest: string) => void;
   onViewDetails: (dest: Destination) => void;
   isSaved: boolean;
   onToggleWishlist: () => void;
 }
 
-const DestinationCard = ({ destination, onPlanTrip, onViewDetails, isSaved, onToggleWishlist }: DestinationCardProps) => {
+const DestinationCard = ({ destination, score, onPlanTrip, onViewDetails, isSaved, onToggleWishlist }: DestinationCardProps) => {
   const { imageUrl, loading: imgLoading } = useTeleportCityImage(destination.city);
   const [imgError, setImgError] = useState(false);
   const config = destination.tag ? TAG_CONFIG[destination.tag] : DEFAULT_FALLBACK;
@@ -294,7 +298,7 @@ const DestinationCard = ({ destination, onPlanTrip, onViewDetails, isSaved, onTo
 
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-flint">City score:</span>
-          <TeleportBadge slug={destination.id} />
+          <TeleportBadge slug={destination.id} prefetchedScore={score} />
         </div>
 
         <div className="flex items-center justify-end">
@@ -530,9 +534,6 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
     }
   };
 
-  const sortSlugs = sort === 'score-desc' ? destinations.map((d) => d.id) : [];
-  const { scores, loading: scoresLoading } = useAllTeleportScores(sortSlugs);
-
   const filtered = useMemo(() => {
     const base = destinations.filter((d) => {
       if (showSavedOnly && !savedIds.has(d.id)) return false;
@@ -548,13 +549,12 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
     });
 
     if (sort === 'az') return [...base].sort((a, b) => a.city.localeCompare(b.city));
-    if (sort === 'score-desc') return [...base].sort((a, b) => (scores.get(b.id) ?? -1) - (scores.get(a.id) ?? -1));
     return base;
-  }, [destinations, search, activeTag, showSavedOnly, savedIds, sort, scores]);
+  }, [destinations, search, activeTag, showSavedOnly, savedIds, sort]);
 
   const availableSorts: SortOption[] = activeRegion === 'popular'
-    ? ['default', 'az', 'score-desc']
-    : ['az', 'score-desc'];
+    ? ['default', 'az']
+    : ['az'];
 
   return (
     <div className="space-y-8">
@@ -580,6 +580,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
       {/* Featured hero — always from popular set */}
       <FeaturedHero
         destination={featured}
+        score={undefined}
         onPlanTrip={onPlanTrip}
         isSaved={isSaved(featured.id)}
         onToggleWishlist={() => toggle(featured.id)}
@@ -675,7 +676,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
         </p>
 
         <div className="flex items-center gap-2 shrink-0">
-          {scoresLoading && (
+          {exploreLoading && (
             <span className="w-3 h-3 rounded-full border-2 border-amber border-t-transparent animate-spin" />
           )}
           <select
@@ -722,6 +723,7 @@ export const ExplorePage = ({ token, onPlanTrip }: ExplorePageProps) => {
             <DestinationCard
               key={dest.id}
               destination={dest}
+              score={undefined}
               onPlanTrip={onPlanTrip}
               onViewDetails={setSelectedDest}
               isSaved={isSaved(dest.id)}

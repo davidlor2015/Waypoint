@@ -3,12 +3,17 @@ import type { TeleportScore } from './useTeleportScore';
 
 const cache = new Map<string, TeleportScore | null>();
 
-export function useTeleportScoreBySlug(slug: string): { data: TeleportScore | null; loading: boolean } {
+export function useTeleportScoreBySlug(
+  slug: string,
+  enabled: boolean = true,
+): { data: TeleportScore | null; loading: boolean } {
   const hit = cache.get(slug);
+  const shouldFetch = enabled && Boolean(slug);
   const [data, setData]       = useState<TeleportScore | null>(hit !== undefined ? hit : null);
-  const [loading, setLoading] = useState(hit === undefined);
+  const [loading, setLoading] = useState(shouldFetch && hit === undefined);
 
   useEffect(() => {
+    if (!shouldFetch) return;
     if (cache.has(slug)) return;
     let cancelled = false;
 
@@ -29,7 +34,7 @@ export function useTeleportScoreBySlug(slug: string): { data: TeleportScore | nu
       });
 
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, shouldFetch]);
 
   return { data, loading };
 }
