@@ -15,4 +15,4 @@ tests/__pycache__/
 dev.log
 ui/playwright-report/
 ui/test-results/
-e2e_test.db
+data/generated_itineraries.json
