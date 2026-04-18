@@ -1,14 +1,27 @@
 import { z } from "zod";
 
-/**
- * Client-side schema that mirrors the backend TripCreate Pydantic model.
- *
- * Rules kept in sync with app/schemas/trip.py:
- *   - title / destination: required, max 255 chars
- *   - start_date / end_date: required ISO date strings
- *   - end_date >= start_date (same cross-field validator as the backend)
- *   - notes (trip preferences): optional free text
- */
+export const BUDGET_OPTIONS = [
+  { value: "budget",   label: "Budget"   },
+  { value: "moderate", label: "Moderate" },
+  { value: "luxury",   label: "Luxury"   },
+] as const;
+
+export const PACE_OPTIONS = [
+  { value: "relaxed",  label: "Relaxed"    },
+  { value: "balanced", label: "Balanced"   },
+  { value: "fast",     label: "Fast-paced" },
+] as const;
+
+export const INTEREST_OPTIONS = [
+  "food", "history", "walking", "culture", "city exploration",
+  "nightlife", "shopping", "landmarks", "photography", "nature",
+  "art", "architecture",
+] as const;
+
+export type BudgetValue   = typeof BUDGET_OPTIONS[number]["value"];
+export type PaceValue     = typeof PACE_OPTIONS[number]["value"];
+export type InterestValue = typeof INTEREST_OPTIONS[number];
+
 export const tripSchema = z
   .object({
     title: z
@@ -20,8 +33,10 @@ export const tripSchema = z
       .min(1, "Destination is required")
       .max(255, "Destination must be 255 characters or less"),
     start_date: z.string().min(1, "Start date is required"),
-    end_date: z.string().min(1, "End date is required"),
-    notes: z.string().optional(),
+    end_date:   z.string().min(1, "End date is required"),
+    budget:     z.enum(["budget", "moderate", "luxury"]).optional(),
+    pace:       z.enum(["relaxed", "balanced", "fast"]).optional(),
+    interests:  z.array(z.string()).optional(),
   })
   .refine(
     (data) =>
@@ -33,3 +48,13 @@ export const tripSchema = z
   );
 
 export type TripFormData = z.infer<typeof tripSchema>;
+
+export function serializePreferences(data: Pick<TripFormData, "budget" | "pace" | "interests">): string {
+  return [
+    data.budget    ? `Budget: ${data.budget}`                   : null,
+    data.pace      ? `Pace: ${data.pace}`                       : null,
+    data.interests?.length ? `Interests: ${data.interests.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}

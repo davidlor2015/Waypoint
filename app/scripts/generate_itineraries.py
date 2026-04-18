@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 OUTPUT_PATH = Path("data/generated_itineraries.json")
 DEFAULT_MODEL = "qwen2.5:14b"
 DEFAULT_MAX_RECORDS: int | None = 20
+MAX_RETRIES = 2
+SAVE_EVERY = 5
 
 # ── Generation matrix ─────────────────────────────────────────────────────────
 # Edit these to expand or restrict what gets generated.
@@ -116,6 +118,7 @@ def run(
 
     service = OllamaService(model=model)
     results: list[dict] = []
+    seen_ids: set[str] = set()
     failed = 0
 
     for idx, params in enumerate(plan, start=1):
@@ -125,26 +128,35 @@ def run(
             idx, total, dest, params["days"], params["budget"], params["pace"],
             ", ".join(params["interests"]),
         )
-        t0 = time.monotonic()
-        try:
-            data = service.generate_itinerary(
-                destination=params["destination"],
-                country=    params["country"],
-                days=       params["days"],
-                budget=     params["budget"],
-                pace=       params["pace"],
-                interests=  params["interests"],
-            )
-        except Exception as exc:
-            logger.error("  FAILED (%s): %s", type(exc).__name__, exc)
-            failed += 1
-            continue
-
-        elapsed = time.monotonic() - t0
         itinerary_id = _make_id(
             params["destination"], params["days"],
             params["budget"], params["pace"], params["interests"],
         )
+        if itinerary_id in seen_ids:
+            logger.warning("  SKIP duplicate ID: %s", itinerary_id)
+            continue
+
+        t0 = time.monotonic()
+        data = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                data = service.generate_itinerary(
+                    destination=params["destination"],
+                    country=    params["country"],
+                    days=       params["days"],
+                    budget=     params["budget"],
+                    pace=       params["pace"],
+                    interests=  params["interests"],
+                )
+                break
+            except Exception as exc:
+                logger.warning("  attempt %d/%d failed (%s): %s", attempt, MAX_RETRIES, type(exc).__name__, exc)
+        if data is None:
+            logger.error("  FAILED after %d attempts — skipping.", MAX_RETRIES)
+            failed += 1
+            continue
+
+        elapsed = time.monotonic() - t0
         record: dict = {
             "itinerary_id": itinerary_id,
             "destination":  params["destination"],
@@ -159,13 +171,16 @@ def run(
             "day_plans":    data.get("day_plans", []),
         }
         results.append(record)
+        seen_ids.add(itinerary_id)
         logger.info(
             "  OK in %.1fs — %d day(s). ID: %s",
             elapsed, len(record["day_plans"]), itinerary_id,
         )
-        # Incremental save so a mid-run interruption doesn't lose completed work.
-        _save(results, output_path)
+        if idx % SAVE_EVERY == 0:
+            _save(results, output_path)
+            logger.info("  checkpoint saved (%d records).", len(results))
 
+    _save(results, output_path)
     logger.info(
         "Generation complete: %d/%d succeeded, %d failed.",
         len(results), total, failed,
@@ -203,7 +218,7 @@ def main() -> None:
         model=args.model,
         shuffle=args.shuffle,
     )
-    if stats["failed"] and stats["succeeded"] == 0:
+    if stats["failed"]:
         sys.exit(1)
 
 

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBudgetTracker, type ExpenseCategory } from './useBudgetTracker';
+import { Toast } from '../../../shared/ui/Toast';
 
 
 interface BudgetTrackerProps {
@@ -229,19 +230,7 @@ export const BudgetTracker = ({ token, tripId, onSummaryChange }: BudgetTrackerP
           </div>
         )}
 
-        <AnimatePresence>
-          {feedback && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-3 px-4 py-3 rounded-xl bg-olive/10 border border-olive/20 text-olive text-sm font-medium"
-              role="status"
-            >
-              {feedback}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <Toast message={feedback} onDismiss={() => setFeedback(null)} />
       </div>
 
       {/* ── Expense list ── */}

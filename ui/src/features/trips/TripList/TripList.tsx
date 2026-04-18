@@ -33,6 +33,7 @@ import {
 interface TripListProps {
   token: string;
   onCreateClick: () => void;
+  initialTripId?: number;
 }
 
 // ── Animation variants ────────────────────────────────────────────────────────
@@ -228,6 +229,20 @@ const TAB_LABELS: Array<{ id: TripWorkspaceTab; label: string; helper: string }>
   { id: 'map', label: 'Map', helper: 'See how the saved itinerary fits together geographically.' },
 ];
 
+function parsePreferences(notes: string | null): { budget?: string; pace?: string; interests?: string[] } | null {
+  if (!notes) return null;
+  const result: { budget?: string; pace?: string; interests?: string[] } = {};
+  for (const part of notes.split('|').map((p) => p.trim())) {
+    const b = part.match(/^Budget:\s*(.+)$/i);
+    if (b) { result.budget = b[1].trim(); continue; }
+    const p = part.match(/^Pace:\s*(.+)$/i);
+    if (p) { result.pace = p[1].trim(); continue; }
+    const i = part.match(/^Interests:\s*(.+)$/i);
+    if (i) result.interests = i[1].split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function getDefaultRegenerationControls(itinerary: EditableItinerary): RegenerationControlState {
   return {
     dayNumber: itinerary.days[0]?.day_number ?? 1,
@@ -340,7 +355,7 @@ const PillButton = ({ onClick, disabled, variant, busy, children }: PillButtonPr
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export const TripList = ({ token, onCreateClick }: TripListProps) => {
+export const TripList = ({ token, onCreateClick, initialTripId }: TripListProps) => {
   const [trips, setTrips]             = useState<Trip[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
@@ -363,9 +378,19 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
   const [favoriteItemIds, setFavoriteItemIds]       = useState<Record<number, string[]>>({});
   const [regenerationControls, setRegenerationControls] = useState<Record<number, RegenerationControlState>>({});
 
+  const tripCardRefs = useRef<Map<number, HTMLLIElement>>(new Map());
+
   const { streams, start: startStream, reset: resetStream } = useStreamingItinerary(token);
 
   // ── Data helpers ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!initialTripId || trips.length === 0) return;
+    const el = tripCardRefs.current.get(initialTripId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [initialTripId, trips]);
 
   const toggleView = (tripId: number) => {
     setViewingIds((prev) => {
@@ -753,6 +778,10 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
             return (
               <motion.li
                 key={trip.id}
+                ref={(el) => {
+                  if (el) tripCardRefs.current.set(trip.id, el);
+                  else tripCardRefs.current.delete(trip.id);
+                }}
                 variants={cardVariants}
                 layout="position"
                 className="bg-white rounded-2xl border border-smoke/60 shadow-sm hover:shadow-md transition-shadow duration-200 p-6 space-y-5"
@@ -851,9 +880,29 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-flint/75">Next thing to handle</p>
                   <p className="text-base font-bold text-espresso mt-1">{nextAction.label}</p>
                   <p className="text-sm text-flint mt-1 max-w-3xl">{nextAction.hint}</p>
-                  {trip.notes && (
-                    <p className="text-xs text-flint/70 italic mt-3">{trip.notes}</p>
-                  )}
+                  {trip.notes && (() => {
+                    const prefs = parsePreferences(trip.notes);
+                    if (prefs) return (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {prefs.budget && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber/15 text-amber text-xs font-semibold border border-amber/20">
+                            {prefs.budget}
+                          </span>
+                        )}
+                        {prefs.pace && (
+                          <span className="px-2 py-0.5 rounded-full bg-espresso/10 text-espresso text-xs font-semibold border border-espresso/15">
+                            {prefs.pace}
+                          </span>
+                        )}
+                        {prefs.interests?.map((interest) => (
+                          <span key={interest} className="px-2 py-0.5 rounded-full bg-parchment text-flint text-xs font-medium border border-smoke">
+                            {interest}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                    return <p className="text-xs text-flint/70 italic mt-3">{trip.notes}</p>;
+                  })()}
                 </div>
 
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -864,7 +913,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-800">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full border border-clay/25 bg-clay/10 text-xs font-semibold text-clay">
                       {reservationSummary?.total ?? 0} booking{(reservationSummary?.total ?? 0) === 1 ? '' : 's'}
                     </span>
                     <span
@@ -883,7 +932,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                   </div>
                 </div>
 
-                <div className="flex gap-1 bg-parchment rounded-full p-1 w-fit flex-wrap">
+                <div className="flex gap-1 bg-parchment rounded-2xl p-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {TAB_LABELS.map((tab) => {
                     const disabled = tab.id === 'map' && !savedItinerary;
                     return (
@@ -893,7 +942,7 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                         onClick={() => !disabled && setActiveTab(trip.id, tab.id)}
                         disabled={disabled}
                         className={[
-                          'px-3 py-1.5 rounded-full text-sm font-semibold transition-colors duration-150',
+                          'flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors duration-150',
                           activeTab === tab.id
                             ? 'bg-white text-espresso shadow-sm'
                             : 'text-flint hover:text-espresso',
@@ -970,14 +1019,15 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                           {isGeneratingSmart ? 'Working...' : 'Smart Plan'}
                         </PillButton>
                         {savedItinerary && (
-                          <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
-                            {isViewing ? 'Hide Saved Itinerary' : 'View Saved Itinerary'}
-                          </PillButton>
-                        )}
-                        {savedItinerary && (
-                          <PillButton variant="ghost" onClick={() => handleLoadSavedAsDraft(trip.id, savedItinerary)}>
-                            Edit Saved as Draft
-                          </PillButton>
+                          <>
+                            <span className="w-px h-5 bg-smoke self-center flex-shrink-0" aria-hidden="true" />
+                            <PillButton variant="ghost" onClick={() => toggleView(trip.id)}>
+                              {isViewing ? 'Hide Saved' : 'View Saved'}
+                            </PillButton>
+                            <PillButton variant="ghost" onClick={() => handleLoadSavedAsDraft(trip.id, savedItinerary)}>
+                              Edit as Draft
+                            </PillButton>
+                          </>
                         )}
                       </div>
                     )}
@@ -1025,7 +1075,24 @@ export const TripList = ({ token, onCreateClick }: TripListProps) => {
                     {!pendingItinerary && !isViewing && !isStreaming && !savedItinerary && (
                       <div className="rounded-2xl border border-dashed border-smoke bg-parchment/40 px-5 py-8 text-center">
                         <p className="text-sm font-semibold text-espresso">No itinerary yet</p>
-                        <p className="text-sm text-flint mt-1">Generate an AI plan or smart plan to start building this trip.</p>
+                        <p className="text-sm text-flint mt-1 mb-4">Generate an AI plan to start building this trip.</p>
+                        <div className="flex justify-center gap-2 flex-wrap">
+                          <PillButton
+                            variant="ocean"
+                            onClick={() => startStream(trip.id, trip.notes ?? undefined)}
+                            disabled={isAnyGenerating}
+                          >
+                            AI Plan
+                          </PillButton>
+                          <PillButton
+                            variant="coral"
+                            onClick={() => handleGenerateSmart(trip.id)}
+                            disabled={isAnyGenerating}
+                            busy={isGeneratingSmart}
+                          >
+                            {isGeneratingSmart ? 'Working…' : 'Smart Plan'}
+                          </PillButton>
+                        </div>
                       </div>
                     )}
                   </div>

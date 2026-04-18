@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePackingList } from './usePackingList';
 import { getPackingSuggestions, type PackingSuggestion } from '../../../shared/api/packing';
+import { Toast } from '../../../shared/ui/Toast';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,19 +133,7 @@ export const PackingList = ({ token, tripId, onSummaryChange }: PackingListProps
           </div>
         )}
 
-        <AnimatePresence>
-          {feedback && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-3 px-4 py-3 rounded-xl bg-olive/10 border border-olive/20 text-olive text-sm font-medium"
-              role="status"
-            >
-              {feedback}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <Toast message={feedback} onDismiss={() => setFeedback(null)} />
 
         {suggestions.length > 0 && (
           <div className="mt-4 space-y-2">
@@ -169,6 +158,16 @@ export const PackingList = ({ token, tripId, onSummaryChange }: PackingListProps
       </div>
 
       {/* ── Item list ── */}
+      {loading && (
+        <div className="divide-y divide-clay/10">
+          {[72, 52, 64].map((w, i) => (
+            <div key={i} className="flex items-center gap-3 px-5 py-3 animate-pulse">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-smoke" />
+              <div className="h-3.5 rounded-full bg-parchment" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </div>
+      )}
       <ul className="divide-y divide-clay/10 list-none p-0 m-0">
         <AnimatePresence initial={false}>
           {items.map((item) => (

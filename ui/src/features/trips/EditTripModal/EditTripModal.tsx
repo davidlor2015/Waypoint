@@ -1,10 +1,25 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { updateTrip, type Trip } from '../../../shared/api/trips';
-import { tripSchema, type TripFormData } from '../schemas/tripSchema';
 import { FormField } from '../../../shared/ui/FormField';
 import { inputCls } from '../../../shared/ui/inputCls';
+
+const editTripSchema = z
+  .object({
+    title:       z.string().min(1, "Title is required").max(255),
+    destination: z.string().min(1, "Destination is required").max(255),
+    start_date:  z.string().min(1, "Start date is required"),
+    end_date:    z.string().min(1, "End date is required"),
+    notes:       z.string().optional(),
+  })
+  .refine((d) => !d.start_date || !d.end_date || d.end_date >= d.start_date, {
+    message: "End date must be on or after start date",
+    path: ["end_date"],
+  });
+
+type EditTripFormData = z.infer<typeof editTripSchema>;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,8 +51,8 @@ export const EditTripModal = ({ token, trip, onSuccess, onClose }: EditTripModal
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<TripFormData>({
-    resolver: zodResolver(tripSchema),
+  } = useForm<EditTripFormData>({
+    resolver: zodResolver(editTripSchema),
     defaultValues: {
       title:       trip.title,
       destination: trip.destination,
@@ -47,7 +62,7 @@ export const EditTripModal = ({ token, trip, onSuccess, onClose }: EditTripModal
     },
   });
 
-  const onSubmit = async (data: TripFormData) => {
+  const onSubmit = async (data: EditTripFormData) => {
     try {
       const updated = await updateTrip(token, trip.id, {
         title:       data.title,

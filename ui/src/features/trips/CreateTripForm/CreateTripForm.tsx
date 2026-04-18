@@ -1,11 +1,18 @@
-import { useForm } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createTrip, type Trip } from '../../../shared/api/trips';
-import { tripSchema, type TripFormData } from '../schemas/tripSchema';
+import {
+  tripSchema,
+  serializePreferences,
+  type TripFormData,
+  BUDGET_OPTIONS,
+  PACE_OPTIONS,
+  INTEREST_OPTIONS,
+} from '../schemas/tripSchema';
 import { FormField } from '../../../shared/ui/FormField';
 import { inputCls } from '../../../shared/ui/inputCls';
-
 
 interface CreateTripFormProps {
   token: string;
@@ -15,24 +22,41 @@ interface CreateTripFormProps {
 }
 
 export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination }: CreateTripFormProps) => {
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+
   const {
     register,
     handleSubmit,
+    control,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<TripFormData>({
     resolver: zodResolver(tripSchema),
-    defaultValues: defaultDestination ? { destination: defaultDestination } : undefined,
+    defaultValues: {
+      destination: defaultDestination ?? '',
+      interests: [],
+    },
   });
+
+  const startDate = useWatch({ control, name: 'start_date' });
+
+  const toggleInterest = (interest: string, onChange: (v: string[]) => void) => {
+    const next = selectedInterests.includes(interest)
+      ? selectedInterests.filter((i) => i !== interest)
+      : [...selectedInterests, interest];
+    setSelectedInterests(next);
+    onChange(next);
+  };
 
   const onSubmit = async (data: TripFormData) => {
     try {
+      const notes = serializePreferences(data);
       const newTrip = await createTrip(token, {
-        title: data.title,
+        title:       data.title,
         destination: data.destination,
-        start_date: data.start_date,
-        end_date: data.end_date,
-        notes: data.notes,
+        start_date:  data.start_date,
+        end_date:    data.end_date,
+        notes:       notes || undefined,
       });
       onSuccess(newTrip);
     } catch (err) {
@@ -49,11 +73,8 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
       transition={{ type: 'spring', bounce: 0.28, duration: 0.52 }}
       className="w-full max-w-lg bg-white rounded-2xl border border-smoke/60 shadow-sm p-8"
     >
-      {/* Header */}
       <div className="mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-espresso tracking-tight">
-          Create Trip
-        </h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-espresso tracking-tight">Create Trip</h2>
         <p className="text-sm text-flint mt-1">
           Add the core trip details now. You can generate and refine the itinerary after the trip is created.
         </p>
@@ -81,46 +102,71 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
           />
         </FormField>
 
-        {/* Dates — side by side */}
+        {/* Dates */}
         <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
           <FormField id="ctf-start-date" label="Start date" error={errors.start_date?.message}>
-            <input
-              id="ctf-start-date"
-              type="date"
-              className={inputCls(!!errors.start_date)}
-              {...register('start_date')}
-            />
+            <input id="ctf-start-date" type="date" className={inputCls(!!errors.start_date)} {...register('start_date')} />
           </FormField>
-
           <FormField id="ctf-end-date" label="End date" error={errors.end_date?.message}>
-            <input
-              id="ctf-end-date"
-              type="date"
-              className={inputCls(!!errors.end_date)}
-              {...register('end_date')}
-            />
+            <input id="ctf-end-date" type="date" min={startDate || undefined} className={inputCls(!!errors.end_date)} {...register('end_date')} />
           </FormField>
         </div>
 
-        {/* Trip preferences (optional) */}
-        <FormField
-          id="ctf-notes"
-          label="Trip preferences"
-          hint="Optional"
-          error={errors.notes?.message}
-        >
-          <input
-            id="ctf-notes"
-            placeholder="e.g. food, museums, low-cost activities"
-            className={inputCls(!!errors.notes)}
-            {...register('notes')}
-          />
-        </FormField>
-        <p className="-mt-2 text-xs text-flint">
-          These notes help guide itinerary generation later, such as interests, pace, or budget preferences.
-        </p>
+        {/* Budget + Pace */}
+        <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+          <FormField id="ctf-budget" label="Budget" hint="Optional" error={errors.budget?.message}>
+            <select id="ctf-budget" className={inputCls(!!errors.budget)} {...register('budget')}>
+              <option value="">Select budget</option>
+              {BUDGET_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </FormField>
 
-        {/* Root / server error */}
+          <FormField id="ctf-pace" label="Pace" hint="Optional" error={errors.pace?.message}>
+            <select id="ctf-pace" className={inputCls(!!errors.pace)} {...register('pace')}>
+              <option value="">Select pace</option>
+              {PACE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+
+        {/* Interests */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-semibold text-espresso">
+            Interests <span className="text-flint font-normal">(Optional)</span>
+          </span>
+          <Controller
+            name="interests"
+            control={control}
+            render={({ field: { onChange } }) => (
+              <div className="flex flex-wrap gap-2">
+                {INTEREST_OPTIONS.map((interest) => {
+                  const active = selectedInterests.includes(interest);
+                  return (
+                    <button
+                      key={interest}
+                      type="button"
+                      onClick={() => toggleInterest(interest, onChange)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors duration-150 cursor-pointer ${
+                        active
+                          ? 'bg-espresso text-white border-espresso'
+                          : 'bg-parchment text-flint border-smoke hover:border-espresso hover:text-espresso'
+                      }`}
+                    >
+                      {interest}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          />
+          <p className="text-xs text-flint">These guide itinerary generation — budget, pace, and interests are passed to the AI.</p>
+        </div>
+
+        {/* Root error */}
         <AnimatePresence>
           {errors.root && (
             <motion.div
@@ -150,7 +196,6 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
           >
             {isSubmitting ? 'Creating…' : 'Create Trip'}
           </motion.button>
-
           <motion.button
             type="button"
             onClick={onCancel}

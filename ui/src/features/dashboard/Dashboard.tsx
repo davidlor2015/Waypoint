@@ -7,7 +7,7 @@ import { getTripSummaries, type Trip, type TripSummary } from '../../shared/api/
 interface DashboardProps {
   token: string;
   trips: Trip[];
-  onNavigate: (view: AppView) => void;
+  onNavigate: (view: AppView, tripId?: number) => void;
 }
 
 type TripStatus = 'upcoming' | 'active' | 'past';
@@ -18,6 +18,7 @@ interface ActionItem {
   description: string;
   ctaLabel: string;
   targetView: AppView;
+  tripId?: number;
   tone: 'amber' | 'clay' | 'olive' | 'espresso';
 }
 
@@ -176,6 +177,7 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
           description: 'Your next trip still needs a saved itinerary before map, packing, and budget planning become useful.',
           ctaLabel: 'Open My Trips',
           targetView: 'trips',
+          tripId: priorityTrip.id,
           tone: 'amber',
         });
       }
@@ -187,6 +189,7 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
           description: 'Add the first essential items now so the trip is not missing pre-departure prep.',
           ctaLabel: 'Review Packing',
           targetView: 'trips',
+          tripId: priorityTrip.id,
           tone: 'clay',
         });
       }
@@ -198,6 +201,7 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
           description: 'A trip budget makes the itinerary and spending summaries much more actionable.',
           ctaLabel: 'Open Budget',
           targetView: 'trips',
+          tripId: priorityTrip.id,
           tone: 'olive',
         });
       }
@@ -292,14 +296,14 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
               <div className="mt-6 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => onNavigate('trips')}
+                  onClick={() => onNavigate('trips', priorityTrip.id)}
                   className="inline-flex items-center rounded-full bg-amber px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-amber/25 hover:bg-amber-dark transition-colors cursor-pointer"
                 >
                   Continue Planning
                 </button>
                 <button
                   type="button"
-                  onClick={() => onNavigate(hasSavedItinerary ? 'trips' : 'explore')}
+                  onClick={() => onNavigate(hasSavedItinerary ? 'trips' : 'explore', hasSavedItinerary ? priorityTrip.id : undefined)}
                   className="inline-flex items-center rounded-full border border-smoke bg-white px-4 py-2 text-sm font-semibold text-espresso hover:bg-parchment transition-colors cursor-pointer"
                 >
                   {hasSavedItinerary ? 'Review Itinerary' : 'Find Inspiration'}
@@ -309,32 +313,41 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
 
             <div className="px-6 py-6 border-t border-smoke/70 lg:border-t-0 lg:border-l bg-white">
               <p className="text-sm font-semibold text-espresso">Planning snapshot</p>
-              <div className="mt-4 space-y-3">
-                <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Itinerary</p>
-                  <p className="mt-1 text-sm font-bold text-espresso">{hasSavedItinerary ? 'Saved and ready to use' : 'Still needs a saved plan'}</p>
+              {loadingMeta && !prioritySummary ? (
+                <div className="mt-4 space-y-3 animate-pulse">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
+                      <div className="h-2.5 bg-smoke/60 rounded-full w-14 mb-2" />
+                      <div className="h-4 bg-smoke rounded-full w-36" />
+                    </div>
+                  ))}
                 </div>
-                <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Packing</p>
-                  <p className="mt-1 text-sm font-bold text-espresso">
-                    {prioritySummary ? `${prioritySummary.packing_checked}/${prioritySummary.packing_total} items packed` : loadingMeta ? 'Loading packing status' : 'No packing data yet'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Budget</p>
-                  <p className="mt-1 text-sm font-bold text-espresso">
-                    {prioritySummary
-                      ? prioritySummary.budget_limit === null
-                        ? 'No budget limit set'
-                        : prioritySummary.budget_is_over
-                          ? `Over budget by $${Math.abs(prioritySummary.budget_remaining ?? 0).toFixed(0)}`
-                          : `$${Math.max(prioritySummary.budget_remaining ?? 0, 0).toFixed(0)} remaining`
-                      : loadingMeta
-                        ? 'Loading budget status'
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Itinerary</p>
+                    <p className="mt-1 text-sm font-bold text-espresso">{hasSavedItinerary ? 'Saved and ready to use' : 'Still needs a saved plan'}</p>
+                  </div>
+                  <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Packing</p>
+                    <p className="mt-1 text-sm font-bold text-espresso">
+                      {prioritySummary ? `${prioritySummary.packing_checked}/${prioritySummary.packing_total} items packed` : 'No packing data yet'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-smoke bg-parchment/40 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-flint">Budget</p>
+                    <p className="mt-1 text-sm font-bold text-espresso">
+                      {prioritySummary
+                        ? prioritySummary.budget_limit === null
+                          ? 'No budget limit set'
+                          : prioritySummary.budget_is_over
+                            ? `Over budget by $${Math.abs(prioritySummary.budget_remaining ?? 0).toFixed(0)}`
+                            : `$${Math.max(prioritySummary.budget_remaining ?? 0, 0).toFixed(0)} remaining`
                         : 'No budget data yet'}
-                  </p>
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </motion.section>
@@ -397,7 +410,7 @@ export function Dashboard({ token, trips, onNavigate }: DashboardProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => onNavigate(action.targetView)}
+                  onClick={() => onNavigate(action.targetView, action.tripId)}
                   className="mt-4 inline-flex items-center rounded-full border border-smoke bg-white px-3.5 py-2 text-sm font-semibold text-espresso hover:bg-parchment transition-colors cursor-pointer"
                 >
                   {action.ctaLabel}

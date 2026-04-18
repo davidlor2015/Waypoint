@@ -57,6 +57,7 @@ Waypoint lets users:
 | Alembic          | 1.18.3        | Database schema migrations                             |
 | Pydantic         | 2.12.5        | Request/response validation                            |
 | psycopg2-binary  | 2.9.9         | PostgreSQL/MySQL database driver                       |
+| pgvector         | 0.3.6         | psycopg2 adapter for pgvector column types             |
 | python-jose      | 3.5.0         | JWT token encoding/decoding                            |
 | passlib + bcrypt | 1.7.4 / 4.3.0 | Password hashing                                       |
 | httpx            | 0.28.1        | Async HTTP client (Ollama + OpenTripMap calls)         |
@@ -410,7 +411,9 @@ features/
                          accepts initialMode ('login' | 'register') and onBack props so App.tsx
                          can route back to the landing page from the auth screen
   dashboard/
-    Dashboard.tsx        stat cards with staggered entrance, dual Recharts bar charts
+    Dashboard.tsx        stat cards with staggered entrance, dual Recharts bar charts;
+                         onNavigate accepts an optional tripId — Next Action and priority-trip
+                         CTAs pass the relevant trip ID so TripList auto-scrolls to it
     DestinationsMap.tsx  Leaflet map with one pin per unique destination, OSM tiles
   explore/
     ExplorePage.tsx      FlightSearch panel at top (Amadeus); Popular region shows 20 curated
@@ -437,11 +440,20 @@ features/
     useMatchRequests.ts  manages request list, open, and close actions
     useMatchResults.ts   fetches results by request id
   trips/
-    TripList/            staggered card list, SSE streaming display, edit modal trigger
-    CreateTripForm/      react-hook-form + zod, animated per-field error messages
-                         accepts optional defaultDestination prop for Explore handoff
-    EditTripModal/       animated modal overlay with prefilled form, PUT /v1/trips/{id}
-    ItineraryPanel/      day and event breakdown, apply button; SVG map-pin icons replace emoji
+    TripList/            staggered card list, SSE streaming display, edit modal trigger;
+                         accepts optional initialTripId prop — smooth-scrolls to and highlights
+                         the target card; empty itinerary state surfaces generate CTAs inline
+    CreateTripForm/      react-hook-form + zod, animated per-field error messages;
+                         structured preference fields (budget dropdown, pace dropdown, interest
+                         tag chips) serialized into trip notes for LLM context;
+                         end-date input sets min= dynamically from start date to prevent
+                         invalid ranges before submission; accepts optional defaultDestination
+                         prop for Explore handoff
+    EditTripModal/       animated modal overlay with prefilled form, PUT /v1/trips/{id};
+                         keeps freeform notes field for editing existing serialized preferences
+    ItineraryPanel/      day/event breakdown, per-day estimated cost range badge, apply button;
+                         Copy button formats the full itinerary as plain text and writes it to
+                         the clipboard (2 s confirmation state); SVG map-pin icons
     ItineraryMap/        interactive Leaflet map rendered below a saved itinerary; per-day
                          colour-coded numbered pins (L.DivIcon), dashed route polylines per day,
                          BoundsFitter inner component reactively fits the viewport, DayLegend
@@ -456,17 +468,27 @@ features/
                          progress bar transitions olive → amber → danger as spend approaches limit;
                          useBudgetTracker hook (API-backed, token + tripId params)
     schemas/
-      tripSchema.ts      Zod schema mirroring backend TripCreate
+      tripSchema.ts      Zod schema for trip creation; exports BUDGET_OPTIONS, PACE_OPTIONS,
+                         INTEREST_OPTIONS constants and serializePreferences() helper that
+                         converts structured form values into a notes string for the backend
 ```
 
 ### Form Validation
 
-`CreateTripForm` uses `react-hook-form` with a `zodResolver` to validate all fields before any network request is made. The Zod schema (`tripSchema.ts`) mirrors the backend `TripCreate` Pydantic model exactly:
+`CreateTripForm` uses `react-hook-form` with a `zodResolver` to validate all fields before any network request is made. The Zod schema (`tripSchema.ts`) covers:
 
 - `title` and `destination`: required, max 255 characters
 - `start_date` and `end_date`: required ISO date strings
 - Cross-field: `end_date >= start_date` (same rule as the backend `@model_validator`)
-- `notes`: optional
+- `budget`: optional enum (`budget | moderate | luxury`)
+- `pace`: optional enum (`relaxed | balanced | fast`)
+- `interests`: optional string array (selected via tag chips)
+
+The `start_date` value is watched via `useWatch` and set as the `min` attribute on the end-date input, so the browser's date picker prevents selecting an invalid range before the form is submitted. Zod's cross-field refine acts as a server-side-style safety net for any edge cases.
+
+On submit, `serializePreferences()` converts the structured selections into a pipe-delimited `notes` string (`"Budget: moderate | Pace: balanced | Interests: food, history"`) before calling the API — no backend schema changes required.
+
+`EditTripModal` uses its own lightweight schema that keeps `notes` as a freeform string, since existing trips store already-serialized preference strings.
 
 Validation errors appear inline below each field with an `AnimatePresence` slide-in animation. The `noValidate` attribute disables browser-native validation so Zod is the single source of truth.
 
@@ -592,6 +614,16 @@ embed_itineraries.py     -> embeds via mxbai-embed-large
         v
 itinerary_chunks         (Postgres table with vector(1024) column)
 ```
+
+**Generation script reliability**
+
+`generate_itineraries.py` includes several production-quality safeguards:
+
+- **Retry logic** — each record is attempted up to `MAX_RETRIES` times before being skipped; transient LLM errors don't abort the run
+- **Structured output schema** — the Ollama `format` field is set to a full JSON Schema object (not just `"json"`), constraining the model output to the exact itinerary shape and eliminating most parse failures
+- **Checkpoint saves** — results are written to disk every `SAVE_EVERY` records so a mid-run interruption doesn't lose completed work
+- **Duplicate ID detection** — `_make_id()` results are tracked in a `seen_ids` set; collisions are skipped with a warning
+- **Strict exit code** — exits non-zero if any records failed, not only if all failed
 
 **Recommended: use the orchestrator**
 

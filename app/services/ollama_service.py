@@ -41,6 +41,40 @@ _DEFAULT_BASE_URL = "http://localhost:11434"
 _DEFAULT_MODEL = "qwen2.5:14b"
 _DEFAULT_TIMEOUT = 120  # seconds
 
+_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["title", "summary", "day_plans"],
+    "properties": {
+        "title":   {"type": "string"},
+        "summary": {"type": "string"},
+        "day_plans": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["day_number", "theme", "activities"],
+                "properties": {
+                    "day_number": {"type": "integer"},
+                    "theme":      {"type": "string"},
+                    "activities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["time", "title", "location", "notes", "cost_estimate"],
+                            "properties": {
+                                "time":          {"type": "string"},
+                                "title":         {"type": "string"},
+                                "location":      {"type": "string"},
+                                "notes":         {"type": "string"},
+                                "cost_estimate": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
 
 
 _SYSTEM_PROMPT = """\
@@ -159,7 +193,7 @@ class OllamaService:
                 {"role": "user",   "content": user},
             ],
             "stream": False,
-            "format": "json",
+            "format": _OUTPUT_SCHEMA,
             "options": {
                 "temperature": 0.7,
                 "num_predict": 8192,

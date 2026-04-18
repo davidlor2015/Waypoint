@@ -12,7 +12,7 @@ interface NavTab {
 
 interface AppShellProps {
   view: AppView;
-  onViewChange: (v: AppView) => void;
+  onViewChange: (v: AppView, tripId?: number) => void;
   userEmail: string;
   onLogout: () => void;
   children: React.ReactNode;
