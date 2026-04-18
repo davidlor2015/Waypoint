@@ -28,3 +28,8 @@ class MatchResult(Base):
         back_populates="results_as_request_b",
         foreign_keys=[request_b_id],
     )
+    interactions: Mapped[list["MatchInteraction"]] = relationship(
+        "MatchInteraction",
+        back_populates="match_result",
+        cascade="all, delete-orphan",
+    )

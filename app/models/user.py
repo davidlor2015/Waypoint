@@ -27,6 +27,11 @@ class User(Base):
         back_populates="receiver",
         foreign_keys="MatchRequest.receiver_id",
     )
+    match_interactions: Mapped[list["MatchInteraction"]] = relationship(
+        "MatchInteraction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     travel_profile: Mapped["TravelProfile"] = relationship(
         "TravelProfile",
         back_populates="user",

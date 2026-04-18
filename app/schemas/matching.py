@@ -38,11 +38,29 @@ class MatchRequestResponse(BaseModel):
     created_at: datetime
 
 
+class MatchInteractionUpsert(BaseModel):
+    status: str
+    note: str | None = None
+
+
+class MatchInteractionResponse(BaseModel):
+    id: int
+    request_id: int
+    match_result_id: int
+    user_id: int
+    status: str
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class MatchResultResponse(BaseModel):
+    id: int
     score: float
     breakdown: dict[str, Any]
     matched_trip: dict[str, Any]
     matched_user: dict[str, Any]
+    interaction: MatchInteractionResponse | None = None
 
 
 class OpenMatchRequestResponse(BaseModel):

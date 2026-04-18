@@ -31,6 +31,8 @@ export const MatchRequestList = ({ token, trips, requests }: MatchRequestListPro
     () => trips.filter((trip) => !items.some((request) => request.trip_id === trip.id && request.status === 'open')),
     [trips, items],
   );
+  const openCount = items.filter((request) => request.status === 'open').length;
+  const closedCount = items.length - openCount;
 
   useEffect(() => {
     if (selectedTripId === '' || selectableTrips.some((trip) => trip.id === selectedTripId)) {
@@ -61,11 +63,21 @@ export const MatchRequestList = ({ token, trips, requests }: MatchRequestListPro
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-2xl border border-smoke/60 shadow-sm p-5 space-y-4">
-        <div>
-          <h3 className="text-lg font-bold text-espresso">Open a request</h3>
-          <p className="text-sm text-flint mt-1">
-            Pick one of your trips and we’ll start looking for compatible travel companions.
-          </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-lg font-bold text-espresso">Open a request</h3>
+            <p className="text-sm text-flint mt-1">
+              Pick one of your trips and we’ll start looking for compatible travel companions.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <span className="px-3 py-1.5 rounded-full bg-olive/10 border border-olive/20 text-olive text-xs font-bold">
+              {openCount} open
+            </span>
+            <span className="px-3 py-1.5 rounded-full bg-parchment border border-smoke text-flint text-xs font-bold">
+              {closedCount} closed
+            </span>
+          </div>
         </div>
 
         <div className="flex gap-3 max-sm:flex-col">
@@ -104,6 +116,12 @@ export const MatchRequestList = ({ token, trips, requests }: MatchRequestListPro
             className="px-4 py-3 rounded-xl bg-danger/10 border border-danger/25 text-danger text-sm font-medium"
           >
             {error}
+          </div>
+        ) : null}
+
+        {selectableTrips.length === 0 && trips.length > 0 ? (
+          <div className="px-4 py-3 rounded-xl bg-parchment border border-smoke text-sm text-flint">
+            Every trip already has an open request. Close one to open another, or wait for new trips.
           </div>
         ) : null}
       </div>

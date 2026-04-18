@@ -26,6 +26,33 @@ class TripService:
     def get_all(self, user_id: int, skip: int = 0, limit: int = 100) -> list[Trip]:
         return self.repo.get_all_by_user(user_id, skip, limit)
 
+    def get_summaries(self, user_id: int, skip: int = 0, limit: int = 100) -> list[dict[str, object]]:
+        trips = self.repo.get_all_by_user_with_planning(user_id, skip, limit)
+        summaries: list[dict[str, object]] = []
+        for trip in trips:
+            packing_total = len(trip.packing_items)
+            packing_checked = sum(1 for item in trip.packing_items if item.checked)
+            packing_progress_pct = 0 if packing_total == 0 else round((packing_checked / packing_total) * 100)
+
+            budget_total_spent = float(sum(expense.amount for expense in trip.budget_expenses))
+            budget_remaining = (
+                float(trip.budget_limit - budget_total_spent)
+                if trip.budget_limit is not None
+                else None
+            )
+            summaries.append({
+                "trip_id": trip.id,
+                "packing_total": packing_total,
+                "packing_checked": packing_checked,
+                "packing_progress_pct": packing_progress_pct,
+                "budget_limit": float(trip.budget_limit) if trip.budget_limit is not None else None,
+                "budget_total_spent": budget_total_spent,
+                "budget_remaining": budget_remaining,
+                "budget_is_over": budget_remaining is not None and budget_remaining < 0,
+                "budget_expense_count": len(trip.budget_expenses),
+            })
+        return summaries
+
     def get_one(self, trip_id: int, user_id: int) -> Trip:
         trip = self.repo.get_by_id_and_user(trip_id, user_id)
         if not trip:

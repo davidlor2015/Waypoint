@@ -4,6 +4,7 @@ from fastapi import APIRouter, Response
 
 from app.api.deps import CurrentUser, SessionDep
 from app.schemas.matching import (
+    MatchInteractionUpsert,
     MatchRequestCreate,
     MatchRequestResponse,
     MatchResultResponse,
@@ -58,4 +59,21 @@ def read_match_results(
         min_score=min_score,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.put("/requests/{id}/matches/{match_result_id}/interaction", response_model=MatchResultResponse)
+def update_match_interaction(
+    id: int,
+    match_result_id: int,
+    interaction_in: MatchInteractionUpsert,
+    db: SessionDep,
+    current_user: CurrentUser,
+):
+    return MatchingService(db).upsert_match_interaction(
+        user_id=current_user.id,
+        request_id=id,
+        match_result_id=match_result_id,
+        status=interaction_in.status,
+        note=interaction_in.note,
     )

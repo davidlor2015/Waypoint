@@ -52,9 +52,11 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
       {/* Header */}
       <div className="mb-6">
         <h2 className="text-xl sm:text-2xl font-bold text-espresso tracking-tight">
-          <span className="mr-2" aria-hidden="true">✈️</span>New Trip
+          Create Trip
         </h2>
-        <p className="text-sm text-flint mt-1">Fill in the details and start planning your adventure.</p>
+        <p className="text-sm text-flint mt-1">
+          Add the core trip details now. You can generate and refine the itinerary after the trip is created.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
@@ -100,20 +102,23 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
           </FormField>
         </div>
 
-        {/* Interests (optional) */}
+        {/* Trip preferences (optional) */}
         <FormField
           id="ctf-notes"
-          label="Interests"
-          hint="(optional)"
+          label="Trip preferences"
+          hint="Optional"
           error={errors.notes?.message}
         >
           <input
             id="ctf-notes"
-            placeholder="e.g. food, history, nature"
+            placeholder="e.g. food, museums, low-cost activities"
             className={inputCls(!!errors.notes)}
             {...register('notes')}
           />
         </FormField>
+        <p className="-mt-2 text-xs text-flint">
+          These notes help guide itinerary generation later, such as interests, pace, or budget preferences.
+        </p>
 
         {/* Root / server error */}
         <AnimatePresence>
@@ -143,7 +148,7 @@ export const CreateTripForm = ({ token, onSuccess, onCancel, defaultDestination 
                        shadow-sm shadow-amber/25 hover:bg-amber-dark transition-colors duration-150
                        disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            {isSubmitting ? 'Creating…' : '🚀 Create Trip'}
+            {isSubmitting ? 'Creating…' : 'Create Trip'}
           </motion.button>
 
           <motion.button

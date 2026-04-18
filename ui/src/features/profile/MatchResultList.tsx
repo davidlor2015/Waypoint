@@ -53,7 +53,7 @@ export const MatchResultList = ({ requestId, token }: MatchResultListProps) => {
             key={`${result.matched_user.id}-${result.matched_trip.id}-${index}`}
             variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }}
           >
-            <MatchResultCard result={result} />
+            <MatchResultCard token={token} requestId={requestId} result={result} />
           </motion.div>
         ))}
       </AnimatePresence>

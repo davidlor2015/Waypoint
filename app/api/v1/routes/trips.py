@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Response
 
 from app.api.deps import CurrentUser, SessionDep
-from app.schemas.trip import TripResponse, TripCreate, TripUpdate
+from app.schemas.trip import TripResponse, TripCreate, TripUpdate, TripSummaryResponse
 from app.services.trip_service import TripService
 
 router = APIRouter()
@@ -16,6 +16,11 @@ def create_trip(trip_in: TripCreate, db: SessionDep, current_user: CurrentUser):
 @router.get("/", response_model=List[TripResponse])
 def read_trips(*, db: SessionDep, current_user: CurrentUser, skip: int = 0, limit: int = 100):
     return TripService(db).get_all(current_user.id, skip, limit)
+
+
+@router.get("/summaries", response_model=List[TripSummaryResponse])
+def read_trip_summaries(*, db: SessionDep, current_user: CurrentUser, skip: int = 0, limit: int = 100):
+    return TripService(db).get_summaries(current_user.id, skip, limit)
 
 
 @router.get("/{trip_id}", response_model=TripResponse)

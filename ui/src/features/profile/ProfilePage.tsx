@@ -259,29 +259,29 @@ export const ProfilePage = ({ trips, userEmail }: ProfilePageProps) => {
         >
           <motion.div
             variants={itemVariants}
-            className="rounded-3xl border border-smoke/60 bg-gradient-to-br from-espresso via-espresso to-clay text-ivory p-6 shadow-lg shadow-espresso/10"
+            className="rounded-2xl border border-smoke/60 bg-parchment/70 p-6 shadow-sm space-y-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-amber/10 text-amber flex items-center justify-center">
                 <SparkIcon />
               </div>
               <div>
-                <p className="text-sm font-semibold text-amber/90">Next Unlock</p>
-                <h4 className="text-lg font-bold leading-tight">{nextBadge?.name ?? 'All badges earned'}</h4>
+                <p className="text-sm font-semibold text-amber">Next Unlock</p>
+                <h4 className="text-lg font-bold text-espresso leading-tight">{nextBadge?.name ?? 'All badges earned'}</h4>
               </div>
             </div>
 
-            <p className="text-sm text-ivory/80 mt-4">
+            <p className="text-sm text-flint">
               {nextBadge?.description ?? 'You have already unlocked every current badge in the profile.'}
             </p>
 
             {nextBadge && (
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold text-ivory/80">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-flint">
                   <span>Progress</span>
                   <span>{nextBadge.progressLabel}</span>
                 </div>
-                <div className="h-2 rounded-full bg-white/15 overflow-hidden">
+                <div className="h-2 rounded-full bg-white border border-smoke overflow-hidden">
                   <div
                     className="h-full rounded-full bg-amber"
                     style={{ width: `${(nextBadge.progressCurrent / nextBadge.progressTarget) * 100}%` }}
@@ -293,7 +293,7 @@ export const ProfilePage = ({ trips, userEmail }: ProfilePageProps) => {
 
           <motion.div
             variants={itemVariants}
-            className="rounded-3xl border border-smoke/60 bg-white p-5 shadow-sm"
+            className="rounded-2xl border border-smoke/60 bg-white p-5 shadow-sm"
           >
             <h4 className="text-sm font-bold text-espresso">Journey Snapshot</h4>
             <div className="mt-4 space-y-3 text-sm">

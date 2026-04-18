@@ -62,3 +62,15 @@ class TripResponse(TripBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TripSummaryResponse(BaseModel):
+    trip_id: int
+    packing_total: int
+    packing_checked: int
+    packing_progress_pct: int
+    budget_limit: float | None
+    budget_total_spent: float
+    budget_remaining: float | None
+    budget_is_over: bool
+    budget_expense_count: int
