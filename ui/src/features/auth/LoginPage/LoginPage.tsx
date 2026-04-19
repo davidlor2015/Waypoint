@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { WaypointLogo } from '../../../shared/ui/WaypointLogo';
 import { motion, AnimatePresence } from 'framer-motion';
 import { login, register } from '../../../shared/api/auth';
 
@@ -115,11 +116,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, initialMod
 
         {/* Logo */}
         <div className="text-center mb-7">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-amber/10 mb-3">
-            <svg viewBox="0 0 20 20" className="w-6 h-6 text-amber" fill="currentColor" aria-hidden="true">
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </div>
+          <WaypointLogo variant="mark" className="w-12 h-12 mx-auto mb-3" />
           <h1 className="text-2xl sm:text-3xl font-bold text-espresso font-display">
             Way<span className="text-clay">point</span>
           </h1>

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import type { Trip } from '../../shared/api/trips';
-import { useProfileStats, type Badge, type JourneyEntry, type TravelStats } from './useProfileStats';
+import { useProfileStats, type JourneyEntry, type TravelStats } from './useProfileStats';
+import { BadgeCollection } from './badges/BadgeCollection';
 
 
 
@@ -59,12 +60,6 @@ const SparkIcon = () => (
   </svg>
 );
 
-const LockIcon = () => (
-  <svg viewBox="0 0 20 20" className="w-3.5 h-3.5" fill="currentColor">
-    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-  </svg>
-);
-
 const ClockIcon = () => (
   <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor">
     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11a.75.75 0 00-1.5 0v3.5c0 .199.079.39.22.53l2.25 2.25a.75.75 0 101.06-1.06l-2.03-2.03V7z" clipRule="evenodd" />
@@ -110,40 +105,6 @@ const StatCard = ({ config, stats }: { config: StatConfig; stats: TravelStats })
     <div>
       <p className="text-xl sm:text-2xl font-extrabold text-espresso leading-none">{config.getValue(stats)}</p>
       <p className="text-xs text-flint mt-1 font-medium">{config.label}</p>
-    </div>
-  </motion.div>
-);
-
-const BadgeCard = ({ badge }: { badge: Badge }) => (
-  <motion.div
-    variants={itemVariants}
-    className={[
-      'rounded-2xl border px-4 py-4 flex flex-col gap-1.5 transition-opacity duration-150',
-      badge.earned ? badge.earnedCls : `${badge.unearnedCls} opacity-60`,
-    ].join(' ')}
-  >
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm font-extrabold leading-tight">{badge.name}</span>
-      {!badge.earned && (
-        <span className="flex-shrink-0 opacity-50">
-          <LockIcon />
-        </span>
-      )}
-    </div>
-    <p className={`text-xs leading-snug ${badge.earned ? 'opacity-80' : 'text-flint'}`}>
-      {badge.description}
-    </p>
-    <div className="mt-1 space-y-1">
-      <div className="flex items-center justify-between text-[11px] font-semibold">
-        <span className={badge.earned ? 'opacity-80' : 'text-flint'}>{badge.earned ? 'Unlocked' : 'Progress'}</span>
-        <span className={badge.earned ? 'opacity-80' : 'text-flint'}>{badge.progressLabel}</span>
-      </div>
-      <div className={`h-1.5 rounded-full overflow-hidden ${badge.earned ? 'bg-white/25' : 'bg-smoke/70'}`}>
-        <div
-          className={`h-full rounded-full ${badge.earned ? 'bg-white/90' : 'bg-amber'}`}
-          style={{ width: `${(badge.progressCurrent / badge.progressTarget) * 100}%` }}
-        />
-      </div>
     </div>
   </motion.div>
 );
@@ -200,10 +161,9 @@ const JourneyCard = ({ trip }: { trip: JourneyEntry }) => (
 
 
 export const ProfilePage = ({ trips, userEmail }: ProfilePageProps) => {
-  const { stats, badges, title, nextBadge, recentTrips } = useProfileStats(trips);
+  const { stats, title, nextBadge, recentTrips } = useProfileStats(trips);
 
-  const initial       = userEmail[0].toUpperCase();
-  const earnedCount   = badges.filter((b) => b.earned).length;
+  const initial = userEmail[0].toUpperCase();
 
   return (
     <div className="space-y-8">
@@ -228,7 +188,7 @@ export const ProfilePage = ({ trips, userEmail }: ProfilePageProps) => {
           <h2 className="text-xl sm:text-2xl font-bold text-espresso leading-tight">{userEmail}</h2>
           <p className="text-sm font-semibold text-amber mt-0.5">{title}</p>
           <p className="text-xs text-flint mt-1">
-            {earnedCount} of {badges.length} badges earned
+            8 waypoint badges
           </p>
         </motion.div>
       </motion.div>
@@ -320,17 +280,8 @@ export const ProfilePage = ({ trips, userEmail }: ProfilePageProps) => {
 
       {/* ── Badges ── */}
       <section>
-        <h3 className="text-base font-bold text-espresso mb-3">Badges</h3>
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-2 sm:grid-cols-4 gap-3"
-        >
-          {badges.map((badge) => (
-            <BadgeCard key={badge.id} badge={badge} />
-          ))}
-        </motion.div>
+        <h3 className="text-base font-bold text-espresso mb-4">Badges</h3>
+        <BadgeCollection />
       </section>
 
       {/* ── Journey Log ── */}

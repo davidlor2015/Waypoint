@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { WaypointLogo } from '../../shared/ui/WaypointLogo';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,14 +20,6 @@ interface AppShellProps {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-
-interface IconProps { className?: string; }
-
-const PlaneIcon = ({ className = 'w-4 h-4' }: IconProps) => (
-  <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
-    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-  </svg>
-);
 
 const DashboardIcon = () => (
   <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor" aria-hidden="true">
@@ -84,13 +77,8 @@ export const AppShell = ({
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-smoke">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
 
-        {/* Logo — group enables coordinated hover across icon + wordmark */}
-        <div className="group flex items-center gap-2 select-none flex-shrink-0 cursor-default">
-          <PlaneIcon className="w-4 h-4 text-clay group-hover:text-amber transition-colors duration-300" />
-          <span className="text-xl sm:text-2xl md:text-3xl font-bold tracking-[-0.03em] font-display text-espresso group-hover:text-amber transition-colors duration-300">
-            Way<span className="text-clay group-hover:text-amber transition-colors duration-300">point</span>
-          </span>
-        </div>
+        {/* Logo */}
+        <WaypointLogo variant="header" className="flex-shrink-0 select-none" />
 
         {/* Nav Tabs */}
         <nav className="flex items-center gap-1 bg-parchment rounded-full p-1">

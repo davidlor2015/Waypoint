@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { WaypointLogo } from '../../shared/ui/WaypointLogo';
 
 
 
@@ -7,14 +8,6 @@ interface LandingPageProps {
   onSignIn: () => void;
 }
 
-
-interface IconProps { className?: string; }
-
-const PlaneIcon = ({ className = 'w-4 h-4' }: IconProps) => (
-  <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
-    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11h2v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-  </svg>
-);
 
 const SparkleIcon = () => (
   <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor" aria-hidden="true">
@@ -148,12 +141,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     <header className="sticky top-0 z-50 bg-ivory/95 backdrop-blur-md border-b border-smoke">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
 
-        <div className="flex items-center gap-2 select-none">
-          <PlaneIcon className="w-4 h-4 text-clay" />
-          <span className="text-lg sm:text-2xl font-bold text-espresso tracking-[-0.03em] font-display">
-            Way<span className="text-clay">point</span>
-          </span>
-        </div>
+        <WaypointLogo variant="header" className="select-none" />
 
         <button
           onClick={onSignIn}
@@ -367,12 +355,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: LandingPageProps) => (
     {/* ── Footer ── */}
     <footer className="px-6 py-8 border-t border-smoke bg-ivory">
       <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2 select-none">
-          <PlaneIcon className="w-4 h-4 text-clay" />
-          <span className="text-base font-bold text-espresso tracking-[-0.03em] font-display">
-            Way<span className="text-clay">point</span>
-          </span>
-        </div>
+        <WaypointLogo variant="full" theme="light" className="select-none" />
         <p className="text-xs text-muted">
           Portfolio project &nbsp;·&nbsp; Built with FastAPI, React, and Ollama
         </p>
